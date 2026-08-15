@@ -22,8 +22,8 @@ export function apply(ctx: ClientContext): void {
   const injected = (): FailoverSettingsInjected => ({ api: connection.api })
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
-    id: 'llm-failover',
-    order: 75,
+    id: 'models-failover',
+    order: 11,
     label: () => ctx.locale.bind('settings.llmFailover')('nav'),
     locale: 'settings.llmFailover',
     inject: injected,

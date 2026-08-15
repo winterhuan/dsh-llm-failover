@@ -39,7 +39,12 @@ llm-failover:
           model: deepseek-v4-flash
         - provider: openai-gateway
           model: gpt-4.1-mini
-      retryableCodes: [EMPTY_RESPONSE, RATE_LIMIT, SERVER, TIMEOUT, TRANSPORT]
+      retryableCodes:
+        - EMPTY_RESPONSE
+        - RATE_LIMIT
+        - SERVER
+        - TIMEOUT
+        - TRANSPORT
 ```
 
 每个组至少需要两个不同的 `{ provider, model }` 目标。`activeGroup` 选择会话请求使用的模型组；省略它会保留 DSH 原有模型选择。默认可切换错误码为 `EMPTY_RESPONSE`、`RATE_LIMIT`、`SERVER`、`TIMEOUT`、`TRANSPORT`。

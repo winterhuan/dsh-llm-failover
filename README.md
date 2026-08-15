@@ -9,7 +9,6 @@ A DeepSeek Harness plugin that routes a conversation request through an ordered 
 The package is not yet published to npm. Develop it inside a DeepSeek Harness source checkout so its TypeScript references resolve, then install the built directory into the Web profile:
 
 ```sh
-# From a DeepSeek Harness checkout that contains this repository at custom-plugins/dsh-llm-failover:
 pnpm --dir custom-plugins/dsh-llm-failover run build
 pnpm dsh plugin --profile web add ./custom-plugins/dsh-llm-failover
 pnpm dsh --profile web web
