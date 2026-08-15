@@ -1,0 +1,41 @@
+export const zh = {
+  nav: '模型故障切换',
+  title: '模型故障切换',
+  description: '按顺序配置模型组。一个目标失败且错误可切换时，会在同一请求步骤中尝试下一个目标。',
+  loading: '正在加载配置…',
+  unavailable: '当前 DSH 未启用 failover 插件。',
+  addGroup: '添加模型组',
+  groupId: '组名',
+  active: '作为当前组',
+  targets: '故障切换顺序',
+  provider: 'Provider',
+  model: '模型',
+  codes: '可切换错误码（逗号分隔）',
+  addTarget: '添加备用模型',
+  remove: '删除',
+  save: '保存',
+  saving: '保存中…',
+  saved: '已保存',
+} as const
+
+export const en = {
+  nav: 'Model failover',
+  title: 'Model failover',
+  description: 'Configure ordered model groups. Eligible failures advance to the next target within the same request step.',
+  loading: 'Loading configuration…',
+  unavailable: 'The failover plugin is not enabled on this DSH host.',
+  addGroup: 'Add group',
+  groupId: 'Group ID',
+  active: 'Use as active group',
+  targets: 'Failover order',
+  provider: 'Provider',
+  model: 'Model',
+  codes: 'Failover error codes (comma-separated)',
+  addTarget: 'Add fallback model',
+  remove: 'Remove',
+  save: 'Save',
+  saving: 'Saving…',
+  saved: 'Saved',
+} as const
+
+export type FailoverSettingsKey = keyof typeof en

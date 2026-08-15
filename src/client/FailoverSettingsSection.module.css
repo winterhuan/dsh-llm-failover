@@ -1,0 +1,75 @@
+.page {
+  max-width: 760px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.description,
+.placeholder {
+  color: var(--dsw-alias-label-tertiary);
+  line-height: 1.5;
+}
+
+.group {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+}
+
+.groupHeader,
+.target,
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.groupHeader > label:first-child,
+.codes {
+  display: grid;
+  flex: 1;
+  gap: 6px;
+}
+
+.active {
+  white-space: nowrap;
+}
+
+.target input,
+.codes input,
+.groupHeader input {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-module-platform);
+  color: inherit;
+}
+
+.target input {
+  flex: 1;
+}
+
+button {
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-module-platform);
+  color: inherit;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.error {
+  color: var(--dsw-alias-label-danger);
+}
