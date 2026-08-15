@@ -1,3 +1,3 @@
 - insert:
     - id: llm-failover
-      name: '@winterhuan/dsh-llm-failover'
+      name: '@winterchenhuan/dsh-llm-failover'

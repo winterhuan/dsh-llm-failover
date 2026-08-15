@@ -1,4 +1,4 @@
-# @winterhuan/dsh-llm-failover
+# @winterchenhuan/dsh-llm-failover
 
 English | [中文](README.zh.md)
 
@@ -18,7 +18,7 @@ pnpm dsh --profile web web
 After publication, the npm form is:
 
 ```sh
-dsh plugin --profile web add @winterhuan/dsh-llm-failover
+dsh plugin --profile web add @winterchenhuan/dsh-llm-failover
 dsh --profile web web
 ```
 

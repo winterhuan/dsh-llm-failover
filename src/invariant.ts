@@ -54,5 +54,5 @@ const install: InvariantInstaller = (ctx, fail) => {
 
 /** Register the failover invariant. */
 export function apply(ctx: Context): Promise<() => void> {
-  return Promise.resolve(ctx.invariants.register('@winterhuan/dsh-llm-failover', install))
+  return Promise.resolve(ctx.invariants.register('@winterchenhuan/dsh-llm-failover', install))
 }

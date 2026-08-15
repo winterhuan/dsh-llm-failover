@@ -1,4 +1,4 @@
-# @winterhuan/dsh-llm-failover
+# @winterchenhuan/dsh-llm-failover
 
 [English](README.md) | 中文
 
@@ -17,7 +17,7 @@ pnpm dsh --profile web web
 发布 npm 后可直接使用：
 
 ```sh
-dsh plugin --profile web add @winterhuan/dsh-llm-failover
+dsh plugin --profile web add @winterchenhuan/dsh-llm-failover
 dsh --profile web web
 ```
 

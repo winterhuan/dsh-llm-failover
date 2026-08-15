@@ -1,6 +1,6 @@
 {
-  "name": "@winterhuan/dsh-llm-failover",
-  "version": "0.1.0",
+  "name": "@winterchenhuan/dsh-llm-failover",
+  "version": "0.1.1",
   "description": "Configurable model-group failover with a DeepSeek Harness Web settings page",
   "license": "MIT",
   "repository": {
@@ -51,12 +51,6 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.1",
     "@deepseek-ai/dsh-agent": ">=0.0.1-rc.1",
-    "@deepseek-ai/dsh-llm": ">=0.0.1-rc.1",
-    "@deepseek-ai/dsh-session": ">=0.0.1-rc.1",
-    "@deepseek-ai/dsh-session-persistence-jsonl": ">=0.0.1-rc.1",
-    "@deepseek-ai/dsh-settings": ">=0.0.1-rc.1",
-    "@deepseek-ai/dsh-system-prompt": ">=0.0.1-rc.1",
-    "@deepseek-ai/dsh-tools": ">=0.0.1-rc.1",
     "@deepseek-ai/dsh-agent-loop": ">=0.0.1-rc.1",
     "@deepseek-ai/dsh-api-remotes": ">=0.0.1-rc.1",
     "@deepseek-ai/dsh-client-locale": ">=0.0.1-rc.1",
@@ -64,6 +58,12 @@
     "@deepseek-ai/dsh-client-ui-settings": ">=0.0.1-rc.1",
     "@deepseek-ai/dsh-client-ui-slots": ">=0.0.1-rc.1",
     "@deepseek-ai/dsh-invariants": ">=0.0.1-rc.1",
+    "@deepseek-ai/dsh-llm": ">=0.0.1-rc.1",
+    "@deepseek-ai/dsh-session": ">=0.0.1-rc.1",
+    "@deepseek-ai/dsh-session-persistence-jsonl": ">=0.0.1-rc.1",
+    "@deepseek-ai/dsh-settings": ">=0.0.1-rc.1",
+    "@deepseek-ai/dsh-system-prompt": ">=0.0.1-rc.1",
+    "@deepseek-ai/dsh-tools": ">=0.0.1-rc.1",
     "@deepseek-ai/schemastery": ">=3.0.0",
     "react": "^18.2.0"
   },

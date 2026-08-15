@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { transform } from 'lightningcss'
 import type { UserConfig } from 'tsdown'
 
-const PACKAGE_NAME = '@winterhuan/dsh-llm-failover'
+const PACKAGE_NAME = '@winterchenhuan/dsh-llm-failover'
 const CSS_PREFIX = '\0dsh-css:'
 const CSS_SUFFIX = '.mjs'
 const ROOT = fileURLToPath(new URL('.', import.meta.url))
