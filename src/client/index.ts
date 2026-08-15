@@ -13,7 +13,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 /** Services required by this browser plugin. */
-export const inject = ['slots', 'locale', 'connection', 'remote']
+export const inject = ['slots', 'locale', 'connection']
 
 /** Register the Failover settings page and its host-backed editor. */
 export function apply(ctx: ClientContext): void {

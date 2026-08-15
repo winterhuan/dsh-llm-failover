@@ -25,7 +25,7 @@ function assetPath(source: string, importer: string): string {
 }
 
 const config: UserConfig[] = [{
-  entry: ['lib/types/index.js'], outDir: 'lib', format: ['esm'], platform: 'node', target: 'es2024', fixedExtension: false, dts: false, clean: false,
+  entry: ['lib/types/index.js', 'lib/types/invariant.js'], outDir: 'lib', format: ['esm'], platform: 'node', target: 'es2024', fixedExtension: false, dts: false, clean: false,
 }, {
   entry: { client: 'lib/types/client/index.js' }, outDir: 'lib', format: 'cjs', platform: 'browser', target: 'es2024', dts: false, sourcemap: true, clean: false,
   external: EXTERNALS,

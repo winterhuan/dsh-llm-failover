@@ -6,8 +6,17 @@
 
 ## 安装
 
+该包尚未发布到 npm。开发时需要放在 DeepSeek Harness 源码 checkout 的 `custom-plugins/dsh-llm-failover` 路径，使 TypeScript reference 能够解析，然后把构建后的目录安装到 Web profile：
+
 ```sh
-pnpm add @winterhuan/dsh-llm-failover
+pnpm --dir custom-plugins/dsh-llm-failover run build
+pnpm dsh plugin --profile web add ./custom-plugins/dsh-llm-failover
+pnpm dsh --profile web web
+```
+
+发布 npm 后可直接使用：
+
+```sh
 dsh plugin --profile web add @winterhuan/dsh-llm-failover
 dsh --profile web web
 ```
@@ -16,7 +25,7 @@ dsh --profile web web
 
 ## 配置
 
-插件注册 `llm-failover` Settings namespace。Web 界面写入该段配置，保存后无需重启即可对后续请求生效。
+插件注册 `llm-failover` Settings namespace。Web 界面写入该段配置，无需重启即可生效。已经进入 failover 的 step 会继续使用该 step 选定的组状态；保存后的配置影响后续请求 step。
 
 ```yaml
 llm-failover:
@@ -39,7 +48,7 @@ llm-failover:
 
 ## 恢复顺序
 
-插件先委托后续 `agent/request-error` listener。后续 listener 返回 `{ kind: 'retry' }` 时优先采用该决定，因此 compaction 或 provider 自身的 retry 可以先恢复当前 route。没有后续 retry 且错误码允许切换时，插件选择组内下一个 target；最后一个 target 失败时，将失败返回给 Agent Loop。
+插件会先调用 `agent/request-error` 下游 listener。下游返回 `{ kind: 'retry' }` 时优先采用该决定，因此 composition 顺序决定 provider retry 或 compaction 是否先于 failover 执行。没有下游 retry 且错误码允许切换时，插件选择组内下一个 target；最后一个 target 失败时，将失败返回给 Agent Loop。
 
 每次成功切换都会写入不进入模型上下文的 `llm/failover` session event，其中包括模型组、来源 route、目标 route 和 provider-neutral failure。Agent Loop 仍会排除失败的部分输出。
 

@@ -6,8 +6,18 @@ A DeepSeek Harness plugin that routes a conversation request through an ordered 
 
 ## Install
 
+The package is not yet published to npm. Develop it inside a DeepSeek Harness source checkout so its TypeScript references resolve, then install the built directory into the Web profile:
+
 ```sh
-pnpm add @winterhuan/dsh-llm-failover
+# From a DeepSeek Harness checkout that contains this repository at custom-plugins/dsh-llm-failover:
+pnpm --dir custom-plugins/dsh-llm-failover run build
+pnpm dsh plugin --profile web add ./custom-plugins/dsh-llm-failover
+pnpm dsh --profile web web
+```
+
+After publication, the npm form is:
+
+```sh
 dsh plugin --profile web add @winterhuan/dsh-llm-failover
 dsh --profile web web
 ```
@@ -16,7 +26,7 @@ The bundle installs one host row and one browser plugin. Open **Settings → Mod
 
 ## Configuration
 
-The plugin registers the `llm-failover` Settings namespace. The Web UI writes this section, and it applies to new request attempts without a restart.
+The plugin registers the `llm-failover` Settings namespace. The Web UI writes this section without a restart. A step that has already entered failover keeps the group state selected for that step; a saved configuration affects subsequent request steps.
 
 ```yaml
 llm-failover:
@@ -44,7 +54,7 @@ Every referenced provider must already be configured and live in DSH. This plugi
 
 ## Recovery order
 
-`dsh-llm-failover` delegates first to later `agent/request-error` listeners. A downstream `{ kind: 'retry' }` wins, allowing a later compaction or provider-specific retry policy to recover the current route. If no downstream listener retries and the error code is eligible, failover selects the next group target. The final target's failure is returned to the Agent Loop.
+`dsh-llm-failover` calls the `agent/request-error` downstream first. A downstream `{ kind: 'retry' }` wins, so composition order decides whether a provider retry or compaction policy runs before failover. If no downstream listener retries and the error code is eligible, failover selects the next group target. The final target's failure is returned to the Agent Loop.
 
 Each successful switch appends a non-surface `llm/failover` session event containing its group, source route, destination route, and provider-neutral failure. It is not sent to the model. Failed partial output remains excluded from the derived message history by the Agent Loop.
 

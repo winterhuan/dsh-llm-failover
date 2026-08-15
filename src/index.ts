@@ -4,7 +4,7 @@ import type { Context, Events } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { RequestErrorAction } from '@deepseek-ai/dsh-agent'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
-import type { LlmCallConfig, LlmFailure } from '@deepseek-ai/dsh-llm'
+import type { LlmCallConfig } from '@deepseek-ai/dsh-llm'
 import type {} from './types.ts'
 import { DEFAULT_RETRYABLE_CODES, FailoverRouter } from './failover.ts'
 import type { FailoverTarget, ModelGroup } from './failover.ts'
@@ -90,13 +90,17 @@ export function apply(ctx: Context, entry: Config = {}): void {
     return group === undefined ? selected : router.route(agent, turn, step, { ...selected, provider: group })
   })
 
+  ctx.on('agent/turn-stopping', ({ agent, turn }) => {
+    router.finishTurn(agent, turn)
+  })
+
   ctx.on('agent/request-error', async (
     { agent, turn, step, failure }: Parameters<Events['agent/request-error']>[0],
     next: () => Promise<RequestErrorAction>,
   ): Promise<RequestErrorAction> => {
     const downstream = await next()
     if (downstream?.kind === 'retry') return downstream
-    const switched = router.failover(agent, turn, step, failure as LlmFailure)
+    const switched = router.failover(agent, turn, step, failure)
     if (switched === undefined) return downstream
     agent.session.append('llm/failover', { turn, step, ...switched, failure })
     return { kind: 'retry' }

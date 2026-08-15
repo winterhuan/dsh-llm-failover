@@ -1,4 +1,4 @@
-import type { Agent, RequestErrorAction } from '@deepseek-ai/dsh-agent'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { LlmCallConfig, LlmFailure } from '@deepseek-ai/dsh-llm'
 
 /** One real adapter route attempted by a model group. */
@@ -33,7 +33,6 @@ function key(turn: number, step: number): string {
 export class FailoverRouter {
   private groups = new Map<string, ModelGroup>()
   private attempts = new WeakMap<Agent, Map<string, Attempt>>()
-  private activeGroups = new WeakMap<Agent, string>()
 
   /** Replace every configured group after validation. */
   setGroups(groups: readonly ModelGroup[]): void {
@@ -66,21 +65,32 @@ export class FailoverRouter {
 
   /** Resolve the concrete route for one outgoing agent request. */
   route(agent: Agent, turn: number, step: number, config: LlmCallConfig): LlmCallConfig {
-    const groupId = this.groups.has(config.provider) ? config.provider : this.activeGroups.get(agent)
+    const groupId = this.groups.has(config.provider) ? config.provider : undefined
     if (groupId === undefined) return config
     const group = this.groups.get(groupId)
     if (group === undefined) return config
-    this.activeGroups.set(agent, group.id)
     let entries = this.attempts.get(agent)
     if (entries === undefined) {
       entries = new Map()
       this.attempts.set(agent, entries)
     }
     const attempt = entries.get(key(turn, step)) ?? { group, targetIndex: 0 }
+    if (attempt.group.id !== group.id) {
+      throw new Error(`llm-failover: step ${turn}/${step} already uses group "${attempt.group.id}"`)
+    }
     entries.set(key(turn, step), attempt)
     const target = attempt.group.targets[attempt.targetIndex]
     if (target === undefined) throw new Error(`llm-failover: group "${attempt.group.id}" has no selected target`)
     return { ...config, provider: target.provider, model: target.model }
+  }
+
+  /** Drop step routing state at a turn boundary. */
+  finishTurn(agent: Agent, turn: number): void {
+    const entries = this.attempts.get(agent)
+    if (entries === undefined) return
+    for (const entryKey of entries.keys()) {
+      if (entryKey.startsWith(`${turn}/`)) entries.delete(entryKey)
+    }
   }
 
   /** Move an eligible failed request to the next target, if any. */
@@ -97,9 +107,4 @@ export class FailoverRouter {
     attempt.targetIndex += 1
     return { group: attempt.group.id, from, to }
   }
-}
-
-/** Translate a selected next target into the Agent Loop retry action. */
-export function retryAfterFailover(result: ReturnType<FailoverRouter['failover']>): RequestErrorAction {
-  return result === undefined ? undefined : { kind: 'retry' }
 }

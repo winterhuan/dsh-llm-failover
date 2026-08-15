@@ -4,13 +4,14 @@
     "rootDir": "src",
     "outDir": "lib/types"
   },
-  "include": ["src/index.ts", "src/failover.ts", "src/types.ts"],
+  "include": ["src/index.ts", "src/failover.ts", "src/invariant.ts", "src/types.ts"],
   "references": [
     { "path": "../../vendor/cordis" },
     { "path": "../../vendor/schemastery" },
     { "path": "../../packages/core/agent" },
     { "path": "../../packages/llm/llm" },
     { "path": "../../packages/core/session" },
-    { "path": "../../packages/settings/settings" }
+    { "path": "../../packages/settings/settings" },
+    { "path": "../../packages/runtime-diagnostics/invariants" }
   ]
 }
