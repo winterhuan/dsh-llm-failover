@@ -2,64 +2,213 @@
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import type { SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
 import { FailoverSettingsSection } from '../src/client/FailoverSettingsSection.tsx'
 import { en } from '../src/client/locales.ts'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 const configured = {
   groups: [{
     id: 'production',
     targets: [
-      { provider: 'primary', model: 'alpha' },
-      { provider: 'secondary', model: 'beta' },
+      { provider: 'primary', model: 'alpha', retryCount: 2 },
+      { provider: 'primary', model: 'omega', retryCount: 0 },
     ],
     retryableCodes: ['RATE_LIMIT', 'TRANSPORT'],
   }],
   activeGroup: 'production',
 }
 
-function view(value: unknown, revision: number): SettingsNamespaceView {
+function response(value: unknown, revision: number): Response {
+  return new Response(JSON.stringify({ value, revision, writable: true }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  })
+}
+
+function api() {
   return {
-    ns: 'llm-failover',
-    schema: {},
-    value,
-    applies: 'live',
-    secrets: [],
-    revision,
+    llm: {
+      providers: vi.fn(() => Promise.resolve({
+        result: { ok: true as const, value: { providers: [
+          { provider: 'primary', displayName: 'Primary', settingsNs: '', settingsPath: [], active: true },
+          { provider: 'secondary', displayName: 'Secondary', settingsNs: '', settingsPath: [], active: true },
+          { provider: 'dormant', displayName: 'Dormant', settingsNs: '', settingsPath: [], active: false },
+        ] } },
+      })),
+      models: vi.fn(() => Promise.resolve({
+        result: { ok: true as const, value: { groups: [
+          { id: 'primary', name: 'Primary', models: [{ id: 'alpha', name: 'Alpha' }, { id: 'omega', name: 'Omega' }] },
+          { id: 'secondary', name: 'Secondary', models: [{ id: 'beta', name: 'Beta' }] },
+        ], failures: [] } },
+      })),
+    },
   }
 }
 
 describe('FailoverSettingsSection', () => {
-  it('loads and saves failover groups through the Host settings API', async () => {
-    const describe = vi.fn(() => Promise.resolve({
-      result: {
-        ok: true as const,
-        value: { writable: true, hasDocument: false, namespaces: [view(configured, 7)] },
-      },
-    }))
-    const mutate = vi.fn(() => Promise.resolve({
-      result: { ok: true as const, value: view(configured, 8) },
-    }))
-    const props = {
-      api: { settings: { describe, mutate } },
-      t: (key: keyof typeof en) => en[key],
-    } as never
+  it('loads provider/model choices and saves per-target retry counts', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response(configured, 7))
+      .mockResolvedValueOnce(response(configured, 8))
+    vi.stubGlobal('fetch', fetch)
+    const props = { api: api(), t: (key: keyof typeof en) => en[key] } as never
 
     render(createElement(FailoverSettingsSection, props))
 
-    expect(await screen.findByDisplayValue('primary')).toBeTruthy()
-    expect(screen.getByDisplayValue('beta')).toBeTruthy()
+    // Both targets start under the primary provider; the first row renders first.
+    await waitFor(() => {
+      expect(screen.getAllByDisplayValue('Primary (primary)')).toHaveLength(2)
+    })
+    const groupId = screen.getByDisplayValue('production')
+    groupId.focus()
+    fireEvent.change(groupId, { target: { value: 'production-a' } })
+    expect(document.activeElement).toBe(groupId)
+    fireEvent.change(groupId, { target: { value: 'production-ab' } })
+    expect(document.activeElement).toBe(groupId)
+    expect(screen.queryByRole('option', { name: 'Dormant (dormant)' })).toBeNull()
+    // Editing the provider on the first target resets its model, so it starts empty.
+    fireEvent.change(screen.getAllByDisplayValue('Primary (primary)')[0]!, { target: { value: 'secondary' } })
+    expect(screen.getByDisplayValue('Secondary (secondary)')).toBeTruthy()
+    expect(screen.getAllByDisplayValue(en.selectModel)).toHaveLength(1)
+    fireEvent.change(screen.getAllByDisplayValue(en.selectModel)[0]!, { target: { value: 'beta' } })
+    // The clean draft is dirty, so the status chip announces that and Save is enabled.
+    expect(await screen.findByText(en.unsaved)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
+    const expected = {
+      ...configured,
+      groups: [{
+        ...configured.groups[0],
+        id: 'production-ab',
+        targets: [
+          { provider: 'secondary', model: 'beta', retryCount: 2 },
+          configured.groups[0]!.targets[1],
+        ],
+      }],
+    }
     await waitFor(() => {
-      expect(mutate).toHaveBeenCalledWith({
-        ns: 'llm-failover',
-        ops: [{ op: 'set', path: [], value: configured }],
-        expectedRevision: 7,
+      expect(fetch).toHaveBeenNthCalledWith(2, '/api/llm-failover.settings', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ value: expected, expectedRevision: 7 }),
       })
     })
     expect(await screen.findByText('Saved')).toBeTruthy()
+  })
+
+  it('shows default retryable codes and updates them through the dropdown', async () => {
+    const withoutCodes = {
+      ...configured,
+      groups: [{ ...configured.groups[0], retryableCodes: undefined }],
+    }
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(response(withoutCodes, 2))))
+
+    const t = (key: keyof typeof en, values?: { count?: number }) => en[key].replace('{count}', String(values?.count ?? ''))
+    render(createElement(FailoverSettingsSection, { api: api(), t } as never))
+
+    expect(await screen.findByText('5 selected')).toBeTruthy()
+    expect(screen.getByText('EMPTY_RESPONSE, RATE_LIMIT, SERVER, TIMEOUT, TRANSPORT')).toBeTruthy()
+    const trigger = screen.getByRole('button', { name: /5 selected/ })
+    fireEvent.click(trigger)
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+    const rateLimit = screen.getByRole('checkbox', { name: 'RATE_LIMIT' }) as HTMLInputElement
+    expect(rateLimit.checked).toBe(true)
+    fireEvent.click(rateLimit)
+    expect(rateLimit.checked).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    expect(screen.getByText(en.noCodes)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Use defaults' }))
+    expect(screen.getByText('5 selected')).toBeTruthy()
+    fireEvent.mouseDown(document.body)
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('closes the retryable-code dropdown on Escape and restores focus to the trigger', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(response(configured, 2))))
+
+    const t = (key: keyof typeof en, values?: { count?: number }) => en[key].replace('{count}', String(values?.count ?? ''))
+    render(createElement(FailoverSettingsSection, { api: api(), t } as never))
+
+    const trigger = await screen.findByRole('button', { name: /2 selected/ })
+    fireEvent.click(trigger)
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  it('reports unavailable before requesting the provider catalog', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('', { status: 404 }))))
+    const hostApi = api()
+
+    render(createElement(FailoverSettingsSection, { api: hostApi, t: (key: keyof typeof en) => en[key] } as never))
+
+    expect(await screen.findByText(en.unavailable)).toBeTruthy()
+    expect(hostApi.llm.providers).not.toHaveBeenCalled()
+    expect(hostApi.llm.models).not.toHaveBeenCalled()
+  })
+
+  it('keeps Save disabled while the draft is clean and re-enables after an edit', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(response(configured, 1))))
+    const props = { api: api(), t: (key: keyof typeof en) => en[key] } as never
+    render(createElement(FailoverSettingsSection, props))
+
+    // The clean draft keeps the Save control disabled; no unsaved indicator yet.
+    await waitFor(() => {
+      expect(screen.getAllByDisplayValue('Primary (primary)')).toHaveLength(2)
+    })
+    expect(screen.queryByText(en.unsaved)).toBeNull()
+    expect(screen.getByRole('button', { name: en.save }).disabled).toBe(true)
+
+    fireEvent.change(screen.getByDisplayValue('2'), { target: { value: '5' } })
+    await screen.findByText(en.unsaved)
+    expect(screen.getByRole('button', { name: en.save }).disabled).toBe(false)
+  })
+
+  it('discards local edits and returns to the clean saved snapshot', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(response(configured, 1))))
+    const props = { api: api(), t: (key: keyof typeof en) => en[key] } as never
+    render(createElement(FailoverSettingsSection, props))
+
+    await screen.findByDisplayValue('2')
+    fireEvent.change(screen.getByDisplayValue('2'), { target: { value: '7' } })
+    const discard = await screen.findByRole('button', { name: en.discard })
+    fireEvent.click(discard)
+
+    // The retry count returns to the persisted value and the draft is clean again.
+    expect(screen.getByDisplayValue('2')).toBeTruthy()
+    expect(screen.queryByText(en.unsaved)).toBeNull()
+    expect(screen.queryByRole('button', { name: en.discard })).toBeNull()
+  })
+
+  it('blocks Save and surfaces inline validation when the group id is cleared', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(response(configured, 1))))
+    const props = { api: api(), t: (key: keyof typeof en) => en[key] } as never
+    render(createElement(FailoverSettingsSection, props))
+
+    const groupId = await screen.findByDisplayValue('production')
+    fireEvent.change(groupId, { target: { value: '' } })
+    await screen.findByText(en.v_INVALID_GROUP_ID)
+    expect(screen.getByRole('button', { name: en.save }).disabled).toBe(true)
+  })
+
+  it('reorders targets with the up/down buttons', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(response(configured, 3))))
+    const props = { api: api(), t: (key: keyof typeof en, values?: { index?: string }) =>
+      en[key].replace('{index}', String(values?.index ?? '')) } as never
+    render(createElement(FailoverSettingsSection, props))
+
+    await screen.findByDisplayValue('Alpha (alpha)')
+    // Target rows are numbered 1 and 2. Moving target 2 up should swap them.
+    fireEvent.click(screen.getByRole('button', { name: /Move target 2 up/ }))
+
+    // After the swap, the first row now lists omega and the second lists alpha.
+    expect(screen.getAllByDisplayValue('Primary (primary)')).toHaveLength(2)
+    expect(screen.getByDisplayValue('Omega (omega)')).toBeTruthy()
+    expect(screen.getByDisplayValue('Alpha (alpha)')).toBeTruthy()
   })
 })

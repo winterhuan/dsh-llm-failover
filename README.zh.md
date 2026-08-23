@@ -21,11 +21,11 @@ dsh plugin --profile web add @winterchenhuan/dsh-llm-failover
 dsh --profile web web
 ```
 
-安装 bundle 后会同时加载 Host 路由插件和浏览器设置插件。打开 **设置 → 模型故障切换** 即可配置。
+安装 bundle 后会同时加载 Host 路由插件和浏览器设置插件。打开 **设置 → 模型故障切换** 即可配置；每个已配置模型组还会出现在对话模型下拉的“模型组”分类中，可按会话切换。
 
 ## 配置
 
-插件注册 `llm-failover` Settings namespace。Web 界面写入该段配置，无需重启即可生效。已经进入 failover 的 step 会继续使用该 step 选定的组状态；保存后的配置影响后续请求 step。
+插件注册 `llm-failover` Settings namespace，并通过插件自有的同源 Host 端点向 Web 界面读写该段配置；这不依赖 Harness `settings.describe` 的内置 namespace 白名单，也无需修改 Harness。保存无需重启即可生效。已经进入 failover 的 step 会继续使用该 step 选定的组状态；保存后的配置影响后续请求 step。
 
 ```yaml
 llm-failover:
@@ -35,10 +35,13 @@ llm-failover:
       targets:
         - provider: deepseek-official
           model: deepseek-v4-pro
+          retryCount: 2
         - provider: deepseek-official
           model: deepseek-v4-flash
+          retryCount: 1
         - provider: openai-gateway
           model: gpt-4.1-mini
+          retryCount: 0
       retryableCodes:
         - EMPTY_RESPONSE
         - RATE_LIMIT
@@ -47,19 +50,19 @@ llm-failover:
         - TRANSPORT
 ```
 
-每个组至少需要两个不同的 `{ provider, model }` 目标。`activeGroup` 选择会话请求使用的模型组；省略它会保留 DSH 原有模型选择。默认可切换错误码为 `EMPTY_RESPONSE`、`RATE_LIMIT`、`SERVER`、`TIMEOUT`、`TRANSPORT`。
+每个组至少需要两个不同的 `{ provider, model }` 目标。每个目标的非负 `retryCount` 表示首次发生可切换错误后，在同一路由上额外尝试的次数；省略时默认为 `0`，即保持原有的立即切换行为。对话模型下拉中的“模型组”分类会列出所有组；选择结果只影响该会话。`activeGroup` 仍可作为未明确选择模型组时的全局默认；省略它会保留 DSH 原有模型选择。默认可切换错误码为 `EMPTY_RESPONSE`、`RATE_LIMIT`、`SERVER`、`TIMEOUT`、`TRANSPORT`。
 
 所有 provider 必须先由 DSH 的 adapter 配置并处于可用状态。本插件不保存凭据，也不创建 provider route。
 
 ## 恢复顺序
 
-插件会先调用 `agent/request-error` 下游 listener。下游返回 `{ kind: 'retry' }` 时优先采用该决定，因此 composition 顺序决定 provider retry 或 compaction 是否先于 failover 执行。没有下游 retry 且错误码允许切换时，插件选择组内下一个 target；最后一个 target 失败时，将失败返回给 Agent Loop。
+插件会先调用 `agent/request-error` 下游 listener。下游返回 `{ kind: 'retry' }` 时优先采用该决定，因此 composition 顺序决定 provider retry 或 compaction 是否先于本插件执行。没有下游 retry 且错误码允许切换时，插件先消耗当前 target 剩余的 `retryCount`，次数耗尽后再选择组内下一个 target；最后一个 target 的重试也耗尽后，将失败返回给 Agent Loop。
 
 每次成功切换都会写入不进入模型上下文的 `llm/failover` session event，其中包括模型组、来源 route、目标 route 和 provider-neutral failure。Agent Loop 仍会排除失败的部分输出。
 
 ## Web 界面
 
-设置页支持添加模型组、选择当前组、按顺序编辑 targets、设置 provider/model，以及控制可切换错误码。保存使用 Host Settings revision；外部配置被同时修改时会拒绝覆盖。
+设置页从 Host 加载 provider 和模型目录，Provider 下拉只显示当前已启用的 route，模型下拉随 Provider 联动，并可设置每个 target 的重试次数。可切换错误码使用多选下拉；未显式配置时显示并选中默认集合。页面同时支持添加模型组、选择当前组和通过每行旁的上移/下移按钮调整 targets 顺序。页头会显示未保存更改标记；本地按 Host 规则对输入进行内联校验，校验未通过时保存被禁用，并可使用“放弃更改”回到上次已保存的快照。保存使用 Host Settings revision；外部配置被同时修改时会拒绝覆盖。
 
 ## 模型体验
 

@@ -12,6 +12,7 @@
     { "path": "../../packages/llm/llm" },
     { "path": "../../packages/core/session" },
     { "path": "../../packages/settings/settings" },
+    { "path": "../../packages/host/webserver" },
     { "path": "../../packages/runtime-diagnostics/invariants" }
   ]
 }

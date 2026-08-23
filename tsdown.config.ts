@@ -9,6 +9,11 @@ const PACKAGE_NAME = '@winterchenhuan/dsh-llm-failover'
 const CSS_PREFIX = '\0dsh-css:'
 const CSS_SUFFIX = '.mjs'
 const ROOT = fileURLToPath(new URL('.', import.meta.url))
+const HOST_BUNDLED = [
+  '@deepseek-ai/schemastery',
+  '@deepseek-ai/dsh-settings',
+  '@deepseek-ai/dsh-llm',
+]
 const EXTERNALS = [
   'react', 'react/jsx-runtime', 'react-dom', 'react-dom/client',
   '@deepseek-ai/cordis', '@deepseek-ai/dsh-client-ui-slots',
@@ -24,13 +29,30 @@ function assetPath(source: string, importer: string): string {
   return index < 0 ? emitted : resolvePath(emitted.slice(0, index), 'src', emitted.slice(index + marker.length))
 }
 
+/**
+ * tsc emits `allowImportingTsExtensions`-style `./x.ts` specifiers into its JS output,
+ * but the physical sibling files on disk end with `.js`. Ask the bundler's default
+ * resolver to look up the same source without the `.ts` suffix, so rolldown finds it.
+ */
+const dshStripTsExtensionPlugin = {
+  name: 'dsh-strip-ts-extension',
+  resolveId(this: any, source: string, importer: string | undefined) {
+    if (!source.startsWith('./') && !source.startsWith('../')) return null
+    if (!source.endsWith('.ts') || source.endsWith('.d.ts')) return null
+    const stripped = source.slice(0, -3)
+    return this.resolve(stripped, importer, { skipSelf: true })
+  },
+}
+
 const config: UserConfig[] = [{
   entry: ['lib/types/index.js', 'lib/types/invariant.js'], outDir: 'lib', format: ['esm'], platform: 'node', target: 'es2024', fixedExtension: false, dts: false, clean: false,
+  noExternal: HOST_BUNDLED,
+  plugins: [dshStripTsExtensionPlugin],
 }, {
   entry: { client: 'lib/types/client/index.js' }, outDir: 'lib', format: 'cjs', platform: 'browser', target: 'es2024', dts: false, sourcemap: true, clean: false,
   external: EXTERNALS,
   noExternal: (id: string) => (EXTERNALS.includes(id) ? undefined : true),
-  plugins: [{
+  plugins: [dshStripTsExtensionPlugin, {
     name: 'dsh-css-modules-inline',
     resolveId(source: string, importer: string | undefined) {
       if (!source.endsWith('.module.css')) return null

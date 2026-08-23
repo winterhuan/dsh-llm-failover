@@ -55,28 +55,39 @@ describe('real Agent Loop failover composition', () => {
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(LlmRuntime)
     await ctx.plugin(Failover, {
-      activeGroup: 'fallback',
       groups: [{
         id: 'fallback',
         targets: [
-          { provider: 'primary', model: 'alpha' },
-          { provider: 'secondary', model: 'beta' },
+          { provider: 'primary', model: 'alpha', retryCount: 1 },
+          { provider: 'secondary', model: 'beta', retryCount: 0 },
         ],
         retryableCodes: ['RATE_LIMIT'],
       }],
     })
     await ctx.plugin(AgentLoop, { agents: [] })
+    expect(ctx.llm.listProviders()).toContainEqual({ id: 'llm-failover', name: '模型组' })
+    expect(await ctx.llm.listModels('llm-failover')).toEqual([{
+      provider: 'llm-failover',
+      id: 'fallback',
+      name: 'fallback',
+      description: 'primary/alpha → secondary/beta',
+    }])
+
     const adapter = new ScriptedAdapter({
-      'primary:alpha': [new LlmError('primary is busy', 'RATE_LIMIT', { status: 429 })],
+      'primary:alpha': [
+        new LlmError('primary is busy', 'RATE_LIMIT', { status: 429 }),
+        new LlmError('primary is still busy', 'RATE_LIMIT', { status: 429 }),
+      ],
       'secondary:beta': ['recovered through failover'],
     })
     ctx.llm.registerAdapter(['primary', 'secondary'], adapter)
 
-    const agent = ctx.agentLoop.create(SessionId('failover'), { provider: 'primary', model: 'alpha' })
+    const agent = ctx.agentLoop.create(SessionId('failover'), { provider: 'llm-failover', model: 'fallback' })
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'recover' }], source: { kind: 'user' } }))
     await agent.whenIdle()
 
     expect(adapter.requests.map(request => [request.provider, request.model])).toEqual([
+      ['primary', 'alpha'],
       ['primary', 'alpha'],
       ['secondary', 'beta'],
     ])
