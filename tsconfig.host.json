@@ -1,18 +1,28 @@
 {
-  "extends": "../../tsconfig.base.json",
+  // Standalone (no DSH source checkout): the strictness set mirrors the
+  // harness tsconfig.base.json; @deepseek-ai/* types come from npm.
   "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "target": "es2024",
+    "lib": ["ES2024"],
+    "declaration": true,
+    "sourceMap": true,
+    "declarationMap": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
     "rootDir": "src",
-    "outDir": "lib/types"
+    "outDir": "lib/types",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "types": ["node"]
   },
-  "include": ["src/index.ts", "src/failover.ts", "src/invariant.ts", "src/types.ts"],
-  "references": [
-    { "path": "../../vendor/cordis" },
-    { "path": "../../vendor/schemastery" },
-    { "path": "../../packages/core/agent" },
-    { "path": "../../packages/llm/llm" },
-    { "path": "../../packages/core/session" },
-    { "path": "../../packages/settings/settings" },
-    { "path": "../../packages/host/webserver" },
-    { "path": "../../packages/runtime-diagnostics/invariants" }
-  ]
+  "include": ["src/index.ts", "src/failover.ts", "src/invariant.ts", "src/types.ts"]
 }

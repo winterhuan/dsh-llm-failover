@@ -6,22 +6,23 @@ A DeepSeek Harness plugin that routes a conversation request through an ordered 
 
 ## Install
 
-The package is not yet published to npm. Develop it inside a DeepSeek Harness source checkout so its TypeScript references resolve, then install the built directory into the Web profile:
+The package is not yet published to npm, so install the built directory into the Web profile:
 
 ```sh
-pnpm --dir custom-plugins/dsh-llm-failover run build
-pnpm dsh plugin --profile web add ./custom-plugins/dsh-llm-failover
-pnpm dsh --profile web web
+pnpm install
+pnpm run build
+dsh plugin --profile web add /path/to/dsh-llm-failover
+dsh web
 ```
+
+Develop this repository standalone, wherever you like: every `@deepseek-ai/*` type and the strict compiler shape come from the packages published on npm and from this repository's own `tsconfig.*.json` — no DeepSeek Harness source checkout is required for typecheck, tests, or build (`pnpm run typecheck`, `pnpm test`). The Harness is only needed for the real mount smoke (the `dsh web` step above).
 
 After publication, the npm form is:
 
 ```sh
 dsh plugin --profile web add @winterchenhuan/dsh-llm-failover
-dsh --profile web web
+dsh web
 ```
-
-The bundle installs one host row and one browser plugin. Open **Settings → Model failover** to configure groups. Every configured group also appears under the **模型组** provider in the conversation model selector, where it can be selected per session.
 
 ## Configuration
 

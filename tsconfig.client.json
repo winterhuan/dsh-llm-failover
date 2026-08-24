@@ -1,17 +1,30 @@
 {
-  "extends": "../../tsconfig.base.client.json",
+  // Standalone browser-side face: jsx + DOM libs; the ambient build-time
+  // process.env (client-build-environment) lives under scripts/types.
   "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "target": "es2024",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "declaration": true,
+    "sourceMap": true,
+    "declarationMap": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
     "rootDir": "src",
     "outDir": "lib/types",
-    "typeRoots": ["../../node_modules/.pnpm/@types+react@18.3.31/node_modules/@types", "../../scripts/types", "../../node_modules/@types"]
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "typeRoots": ["./scripts/types", "./node_modules/@types"],
+    "types": ["client-build-environment"]
   },
-  "include": ["src/client", "src/css-modules.d.ts"],
-  "references": [
-    { "path": "../../vendor/cordis" },
-    { "path": "../../packages/client/ui-slots" },
-    { "path": "../../packages/client/runtime" },
-    { "path": "../../packages/client/ui-settings" },
-    { "path": "../../packages/client/locale" },
-    { "path": "../../packages/api/remotes/tsconfig.client.json" }
-  ]
+  "include": ["src/client", "src/css-modules.d.ts"]
 }

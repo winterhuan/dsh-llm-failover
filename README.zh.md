@@ -6,22 +6,23 @@
 
 ## 安装
 
-该包尚未发布到 npm。开发时需要放在 DeepSeek Harness 源码 checkout 的 `custom-plugins/dsh-llm-failover` 路径，使 TypeScript reference 能够解析，然后把构建后的目录安装到 Web profile：
+该包尚未发布到 npm，因此把构建后的目录安装到 Web profile：
 
 ```sh
-pnpm --dir custom-plugins/dsh-llm-failover run build
-pnpm dsh plugin --profile web add ./custom-plugins/dsh-llm-failover
-pnpm dsh --profile web web
+pnpm install
+pnpm run build
+dsh plugin --profile web add /path/to/dsh-llm-failover
+dsh web
 ```
+
+本仓库可以放在任意位置独立开发：`@deepseek-ai/*` 的类型与 strict 编译配置都来自 npm 上已发布的包和仓库自带的 `tsconfig.*.json`，typecheck、测试与构建（`pnpm run typecheck`、`pnpm test`）都不需要 DeepSeek Harness 源码 checkout。只有真实挂载冒烟（上面的 `dsh web` 一步）才需要 Harness。
 
 发布 npm 后可直接使用：
 
 ```sh
 dsh plugin --profile web add @winterchenhuan/dsh-llm-failover
-dsh --profile web web
+dsh web
 ```
-
-安装 bundle 后会同时加载 Host 路由插件和浏览器设置插件。打开 **设置 → 模型故障切换** 即可配置；每个已配置模型组还会出现在对话模型下拉的“模型组”分类中，可按会话切换。
 
 ## 配置
 
