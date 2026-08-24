@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { IApiClient, ModelProviderGroup } from '@deepseek-ai/dsh-api-remotes/client'
+import type { ConfigurableProviderView, IApiClient, ModelProviderGroup, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import styles from './FailoverSettingsSection.module.css'
 import type { FailoverSettingsKey } from './locales.ts'
+import { TargetAdvancedEditor } from './TargetAdvancedEditor.tsx'
+import {
+  draftFromProfile, effortsFromModelEntry, fingerprint, getPathValue, layoutOf, routeOps,
+  unionOptions, validateAdvanced,
+} from './profile-settings.ts'
+import type { AdapterLayout, ModelEffortsDraft, RouteAdvancedDraft } from './profile-settings.ts'
 
 const SETTINGS_ROUTE = '/api/llm-failover.settings'
 const DEFAULT_RETRYABLE_CODES = ['EMPTY_RESPONSE', 'RATE_LIMIT', 'SERVER', 'TIMEOUT', 'TRANSPORT'] as const
@@ -55,9 +61,15 @@ interface DraftValue {
   activeGroup: string | undefined
 }
 
-/** Injected API dependency for provider and model catalogs. */
+/** Injected API dependency for provider and model catalogs, settings writes, and invalidations. */
 export interface FailoverSettingsInjected {
-  api: Pick<IApiClient, 'llm'>
+  api: Pick<IApiClient, 'llm' | 'settings'>
+  /**
+   * Subscribe to host invalidations (`settings/document-updated`,
+   * `llm/adapters-updated`); the page refreshes advanced data while clean.
+   * @returns the disposer removing the listener.
+   */
+  onInvalidated?: (listener: () => void) => () => void
 }
 
 /** Props supplied by the settings slot. */
@@ -302,13 +314,56 @@ function RetryableCodeSelect({
 }
 
 /** Edit ordered model groups in the host settings document. */
-export function FailoverSettingsSection({ api, t }: Props) {
+export function FailoverSettingsSection({ api, t, onInvalidated }: Props) {
   const [view, setView] = useState<SettingsView | undefined>()
   const [value, setValue] = useState<DraftValue | undefined>()
   const [providers, setProviders] = useState<ProviderOption[]>([])
+  const [providerViews, setProviderViews] = useState<ConfigurableProviderView[]>([])
   const [modelGroups, setModelGroups] = useState<ModelProviderGroup[]>([])
   const [status, setStatus] = useState<'loading' | 'ready' | 'saving' | 'unavailable' | 'saved' | 'error'>('loading')
   const [error, setError] = useState<string | undefined>()
+  // null: the settings read failed (e.g. a non-loopback browser) — advanced
+  // editors degrade to a hint; undefined: not yet answered.
+  const [namespaces, setNamespaces] = useState<ReadonlyMap<string, SettingsNamespaceView> | null | undefined>(undefined)
+  const [advanced, setAdvanced] = useState<Record<string, RouteAdvancedDraft>>({})
+  const [advancedBaseline, setAdvancedBaseline] = useState<Record<string, string>>({})
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const providersRef = useRef<ConfigurableProviderView[]>([])
+  providersRef.current = providerViews
+  const advancedDirtyRef = useRef(false)
+
+  /**
+   * Load the advanced (provider profile) data over `settings.describe`. The
+   * call is loopback-only, like the page's own settings route; a rejection
+   * degrades the advanced editors instead of failing the page.
+   */
+  const loadAdvanced = async (entries: ConfigurableProviderView[]): Promise<void> => {
+    try {
+      const described = await api.settings.describe({})
+      if (!described.result.ok) {
+        setNamespaces(null)
+        return
+      }
+      const map = new Map(described.result.value.namespaces.map(item => [item.ns, item]))
+      const drafts: Record<string, RouteAdvancedDraft> = {}
+      const baselines: Record<string, string> = {}
+      for (const entry of entries) {
+        const namespace = map.get(entry.settingsNs)
+        if (namespace === undefined) continue
+        const draft = draftFromProfile(getPathValue(namespace.value, entry.settingsPath))
+        drafts[entry.provider] = draft
+        baselines[entry.provider] = fingerprint(draft)
+      }
+      setNamespaces(map)
+      setAdvanced(drafts)
+      setAdvancedBaseline(baselines)
+    } catch (cause) {
+      void cause
+      setNamespaces(null)
+    }
+  }
+  const loadAdvancedRef = useRef(loadAdvanced)
+  loadAdvancedRef.current = loadAdvanced
 
   const load = async (): Promise<void> => {
     setStatus('loading')
@@ -325,13 +380,16 @@ export function FailoverSettingsSection({ api, t }: Props) {
     ])
     if (!providersResponse.result.ok) throw new Error(providersResponse.result.error.message)
     if (!modelsResponse.result.ok) throw new Error(modelsResponse.result.error.message)
-    setProviders(providersResponse.result.value.providers
+    const entries = providersResponse.result.value.providers
+    setProviders(entries
       .filter(provider => provider.active)
       .map(provider => ({ id: provider.provider, name: provider.displayName })))
+    setProviderViews(entries)
     setModelGroups(modelsResponse.result.value.groups)
     setView(next)
     setValue(valueOf(next))
     setStatus('ready')
+    await loadAdvanced(entries)
   }
 
   useEffect(() => {
@@ -339,7 +397,33 @@ export function FailoverSettingsSection({ api, t }: Props) {
       setError(cause instanceof Error ? cause.message : String(cause))
       setStatus('error')
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api])
+
+  // A pushed settings/adapters invalidation refreshes advanced data only
+  // while no advanced edit would be clobbered.
+  useEffect(() => {
+    if (onInvalidated === undefined) return
+    return onInvalidated(() => {
+      if (advancedDirtyRef.current) return
+      void loadAdvancedRef.current(providersRef.current)
+    })
+  }, [onInvalidated])
+
+  const advancedDirty = useMemo(
+    () => Object.entries(advanced).some(([provider, draft]) => fingerprint(draft) !== advancedBaseline[provider]),
+    [advanced, advancedBaseline],
+  )
+  advancedDirtyRef.current = advancedDirty
+
+  const advancedErrors = useMemo(() => {
+    const errors: Record<string, string[]> = {}
+    for (const [provider, draft] of Object.entries(advanced)) {
+      const codes = validateAdvanced(draft)
+      if (codes.length > 0) errors[provider] = codes
+    }
+    return errors
+  }, [advanced])
 
   const savedValue = useMemo<DraftValue | undefined>(() => view === undefined ? undefined : valueOf(view), [view])
   const dirty = useMemo<boolean>(() => {
@@ -347,8 +431,9 @@ export function FailoverSettingsSection({ api, t }: Props) {
     return !samePersisted(value, savedValue)
   }, [savedValue, value])
   const validation = useMemo(() => value === undefined ? null : validateValue(value), [value])
-  const canSave = status === 'ready' && dirty
+  const canSave = status === 'ready' && (dirty || advancedDirty)
     && (validation?.ok ?? false)
+    && Object.keys(advancedErrors).length === 0
     && (view?.writable ?? false)
 
   const save = async (): Promise<void> => {
@@ -357,17 +442,46 @@ export function FailoverSettingsSection({ api, t }: Props) {
     setStatus('saving')
     setError(undefined)
     try {
-      const response = await fetch(SETTINGS_ROUTE, {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          value: valueToSave(value),
-          expectedRevision: view.revision,
-        }),
-      })
-      const next = await readResponse(response)
-      setView(next)
-      setValue(valueOf(next))
+      const groupDirty = savedValue !== undefined && !samePersisted(value, savedValue)
+      if (groupDirty) {
+        const response = await fetch(SETTINGS_ROUTE, {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            value: valueToSave(value),
+            expectedRevision: view.revision,
+          }),
+        })
+        const next = await readResponse(response)
+        setView(next)
+        setValue(valueOf(next))
+      }
+      // Route profiles commit after the group document; a refused write stops
+      // later routes and reports inline without rolling earlier commits back.
+      for (const [provider, draft] of Object.entries(advanced)) {
+        if (fingerprint(draft) === advancedBaseline[provider]) continue
+        const entry = providerViews.find(item => item.provider === provider)
+        if (entry === undefined || namespaces === undefined || namespaces === null) continue
+        const namespace = namespaces.get(entry.settingsNs)
+        const layout = layoutOf(entry.settingsNs)
+        if (namespace === undefined || layout === 'unknown') continue
+        const ops = routeOps({
+          layout,
+          settingsPath: entry.settingsPath,
+          draft,
+          effective: getPathValue(namespace.value, entry.settingsPath),
+          user: getPathValue(namespace.user, entry.settingsPath),
+        })
+        if (ops.length === 0) continue
+        const mutated = await api.settings.mutate({ ns: entry.settingsNs, ops, expectedRevision: namespace.revision })
+        if (!mutated.result.ok) {
+          setError(mutated.result.error.code === 'settings-conflict' ? t('advConflict') : mutated.result.error.message)
+          setStatus('error')
+          await loadAdvanced(providerViews)
+          return
+        }
+      }
+      await loadAdvanced(providerViews)
       setStatus('saved')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
@@ -544,6 +658,36 @@ export function FailoverSettingsSection({ api, t }: Props) {
                 <ol className={styles.targetList}>
                   {group.targets.map((target, targetIndex) => {
                     const targetErr = errors.targets[targetIndex] ?? []
+                    // The advanced editor reads its provider's route entry and
+                    // namespace; a route without a resolvable namespace renders
+                    // the unsupported hint instead of dead controls.
+                    const routeEntry = providerViews.find(item => item.provider === target.provider)
+                    const namespace = routeEntry === undefined || namespaces == null
+                      ? undefined
+                      : namespaces.get(routeEntry.settingsNs)
+                    const settingsPath = routeEntry?.settingsPath ?? []
+                    const layout: AdapterLayout = namespace === undefined || advanced[target.provider] === undefined
+                      ? 'unknown'
+                      : layoutOf(routeEntry?.settingsNs)
+                    const advancedDraft = advanced[target.provider]
+                    const reasoningLevels = layout === 'pi-ai' && namespace !== undefined
+                      ? unionOptions(namespace.schema, [...settingsPath, 'reasoning'])
+                      : []
+                    const effortOptions = layout === 'deepseek' && namespace !== undefined
+                      ? unionOptions(namespace.schema, [...settingsPath, 'reasoningEffort'])
+                      : []
+                    let modelInCatalog = false
+                    let modelEfforts: ModelEffortsDraft | undefined
+                    if (layout === 'pi-ai' && namespace !== undefined && advancedDraft !== undefined && target.model.length > 0) {
+                      const models = getPathValue(namespace.value, [...settingsPath, 'models'])
+                      const entry = Array.isArray(models)
+                        ? models.find(item => typeof item === 'object' && item !== null
+                          && (item as { id?: unknown }).id === target.model)
+                        : undefined
+                      modelInCatalog = entry !== undefined
+                      modelEfforts = advancedDraft.efforts[target.model]
+                        ?? effortsFromModelEntry(entry, reasoningLevels)
+                    }
                     return (
                       <li className={styles.target} key={target.draftId}>
                         <div className={styles.targetIndex} aria-hidden="true">{targetLabel(targetIndex)}</div>
@@ -622,11 +766,55 @@ export function FailoverSettingsSection({ api, t }: Props) {
                           >
                             {t('remove')}
                           </button>
+                          {target.provider.length > 0 && (
+                            <button
+                              type="button"
+                              className={styles.iconButton}
+                              aria-expanded={expanded[target.draftId] === true}
+                              aria-label={t('advToggle')}
+                              title={t('advToggle')}
+                              onClick={() => setExpanded(current => ({
+                                ...current,
+                                [target.draftId]: current[target.draftId] !== true,
+                              }))}
+                            >
+                              <span aria-hidden="true">⚙</span>
+                            </button>
+                          )}
                         </div>
                         {targetErr.length > 0 && (
                           <ul className={`${styles.errorList} ${styles.targetErrorList}`} role="alert">
                             {targetErr.map(code => <li key={code}>{tValidationError(t, code)}</li>)}
                           </ul>
+                        )}
+                        {expanded[target.draftId] === true && target.provider.length > 0 && (
+                          <TargetAdvancedEditor
+                            layout={layout}
+                            namespacesAvailable={namespaces !== null}
+                            model={target.model}
+                            modelInCatalog={modelInCatalog}
+                            modelEfforts={modelEfforts}
+                            reasoningLevels={reasoningLevels}
+                            effortOptions={effortOptions}
+                            draft={advancedDraft ?? draftFromProfile(undefined)}
+                            errors={advancedErrors[target.provider] ?? []}
+                            disabled={status === 'saving' || view?.writable === false}
+                            t={t}
+                            onModelEffortsChange={(next) => {
+                              if (advancedDraft === undefined) return
+                              setAdvanced((current) => {
+                                const route = current[target.provider]
+                                if (route === undefined) return current
+                                const efforts = { ...route.efforts }
+                                if (next === undefined) delete efforts[target.model]
+                                else efforts[target.model] = next
+                                return { ...current, [target.provider]: { ...route, efforts } }
+                              })
+                            }}
+                            onChange={(next) => {
+                              setAdvanced(current => ({ ...current, [target.provider]: next }))
+                            }}
+                          />
                         )}
                       </li>
                     )

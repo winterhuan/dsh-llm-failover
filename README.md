@@ -64,6 +64,15 @@ Each successful switch appends a non-surface `llm/failover` session event contai
 
 The settings page loads provider and model catalogs from the Host. The provider dropdown includes only currently active routes, the model dropdown follows the selected provider, and each target has an editable retry count. Retryable errors use a multi-select dropdown; when omitted, the default set is displayed and selected. The page also supports adding groups, choosing the active group, and arranging targets with the up/down buttons beside each row. The header shows an unsaved-changes chip, saves are gated by inline validation against the host rules, and a Discard control restores the last saved snapshot. Save uses the host Settings revision, so a conflicting external edit is rejected rather than overwritten.
 
+### Target advanced settings
+
+Every target row carries a collapsible advanced section editing that provider route's adapter profile directly — the same two fields the adapter `Config` schemas declare, written through the standard `settings.mutate` wire API, so no Harness change is involved:
+
+- **Retry policy** (`retryPolicy`): mode `normal`/`always`; in `normal`, `maxRetries`, `retryableCodes` (validated against the host rules before saving), and `backoff` (`initialDelayMs`/`maxDelayMs`/`jitterRatio`). Switching to `always` unsets the normal-only fields. A Reset control restores the adapter defaults (5 retries, the fallback/timeout codes, 500–10000 ms backoff, 0.1 jitter).
+- **Reasoning**: a DeepSeek route exposes the profile-level `reasoningEffort` default (`off`/`low`/`high`/`max`); a pi-ai route exposes the profile default `reasoning` plus a per-model `reasoningEfforts` mapping (disable reasoning for the model, or set each offered level's wire spelling). Selectable levels are read from the namespace's own schema unions, so the page tracks the adapter instead of hardcoding choices. A model that does not appear in the profile's `models` list cannot be edited there.
+
+These fields belong to the whole provider route, not to the failover group: every target on the same route shares one value, and the change applies hot (`llm/adapters-updated`) to conversations outside failover groups too. The page labels each editor accordingly. Save order is the group document first, then one `settings.mutate` per edited route; a refused write aborts the remaining routes, reports inline, and does not roll back earlier commits. The namespaces are read through the loopback-only `settings.describe`; a non-loopback browser degrades the advanced editors to a hint, and a read-only settings provider disables them. Unknown adapter namespaces render a hint without controls.
+
 ## Model Experience
 
 None, as this plugin only changes provider routing after a failed model request; its events and settings UI do not enter model context.

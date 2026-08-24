@@ -488,3 +488,107 @@ button:disabled {
     margin-top: 6px;
   }
 }
+
+/* Per-target advanced editor (retry policy + reasoning). */
+
+.advanced {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.advancedHint {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.advBlock {
+  display: grid;
+  gap: 8px;
+}
+
+.advToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+}
+
+.advField {
+  display: grid;
+  gap: 4px;
+}
+
+.advField > span {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.advField select,
+.advField input {
+  max-width: 260px;
+}
+
+.advModeRow {
+  display: flex;
+  gap: 14px;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+}
+
+.advBackoff {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.advBackoff .advField input {
+  width: 120px;
+}
+
+.advCodes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.advCodeChip {
+  padding: 3px 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.advCodeChip:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.advCodeAdd {
+  max-width: 160px;
+  font-size: 12px;
+}
+
+.advDefaults {
+  justify-self: start;
+  padding: 4px 10px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.advLevelRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.advSpelling {
+  width: 180px;
+}

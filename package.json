@@ -1,6 +1,6 @@
 {
   "name": "@winterchenhuan/dsh-llm-failover",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Configurable model-group failover with a DeepSeek Harness Web settings page",
   "license": "MIT",
   "repository": {

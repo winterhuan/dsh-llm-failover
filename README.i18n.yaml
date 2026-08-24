@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write custom-plugins/dsh-llm-failover/README.md
-README.md: 00c3155fb00c4029f2bcdacf06efaeaba9224e20
-README.zh.md: 707874bda7b055d5ab770565be2175c93d9a1a73
+README.md: 25af6f6445c3efc9d93294ffcfa3727740b471ba
+README.zh.md: 405569a1f2cd2df803d8abd2eed3945914837440

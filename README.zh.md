@@ -64,6 +64,15 @@ llm-failover:
 
 设置页从 Host 加载 provider 和模型目录，Provider 下拉只显示当前已启用的 route，模型下拉随 Provider 联动，并可设置每个 target 的重试次数。可切换错误码使用多选下拉；未显式配置时显示并选中默认集合。页面同时支持添加模型组、选择当前组和通过每行旁的上移/下移按钮调整 targets 顺序。页头会显示未保存更改标记；本地按 Host 规则对输入进行内联校验，校验未通过时保存被禁用，并可使用“放弃更改”回到上次已保存的快照。保存使用 Host Settings revision；外部配置被同时修改时会拒绝覆盖。
 
+### 目标高级配置
+
+每个 target 行带一个可折叠的高级区，直接编辑该 provider 路由的适配器 profile——两类字段都是适配器 `Config` schema 的既有成员，写入经标准 `settings.mutate` wire API，不需要改动 Harness：
+
+- **重试策略**（`retryPolicy`）：`normal`/`always` 模式；`normal` 下可配 `maxRetries`、`retryableCodes`（保存前按 Host 规则校验）与 `backoff`（`initialDelayMs`/`maxDelayMs`/`jitterRatio`）。切到 `always` 会 unset 仅 normal 使用的字段。「恢复默认」一键还原适配器默认值（重试 5 次、故障切换/超时错误码、500–10000 ms 退避、0.1 抖动）。
+- **推理等级**：DeepSeek 路由暴露 profile 级 `reasoningEffort` 默认值（`off`/`low`/`high`/`max`）；pi-ai 路由暴露 profile 默认 `reasoning` 档位，以及每模型 `reasoningEfforts` 映射（可整体禁用推理，或为每个可选 level 设置线上拼写）。可选档位从命名空间自身的 schema union 读取，不硬编码，因此页面始终跟随适配器。不在 profile `models` 列表中的模型无法在此编辑。
+
+这些字段属于整条 provider 路由而不是故障切换组：同一路由的所有 target 共享同一份配置，改动热生效（`llm/adapters-updated`），并作用于 failover 组之外的会话。界面会标注这一点。保存顺序为先写组配置、再按路由逐个 `settings.mutate`；某次写入被拒绝时中止后续路由、内联报错，不回滚已提交的部分。命名空间经仅 loopback 的 `settings.describe` 读取；非 loopback 浏览器把高级区降级为提示，只读 settings provider 则禁用控件。未知的适配器命名空间只显示提示、不提供控件。
+
 ## 模型体验
 
 无。本插件只在模型请求失败后改变 provider 路由；设置界面和事件不会进入模型上下文。
