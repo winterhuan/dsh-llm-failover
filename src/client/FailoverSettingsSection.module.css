@@ -1,5 +1,18 @@
+/* Model failover settings section, in the settings-panel design language:
+ * 14/22 body, 12/18 caption, h32 r8 fields with `border-l2` hairlines, and
+ * every color through a `--dsw-alias-*` token. Controls come from
+ * `@deepseek-ai/dsh-client-ui-primitives`; this sheet only styles layout,
+ * native selects/checkboxes, and this page's own popover.
+ *
+ * CSS Modules scope class selectors only: a bare element selector here would
+ * leak into the whole app because the bundler injects the sheet into
+ * document.head, so EVERY rule below lives under a local class. */
+
 .page {
-  max-width: 880px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 720px;
   color: var(--dsw-alias-label-primary);
 }
 
@@ -15,6 +28,26 @@
   border: 0;
 }
 
+.title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+}
+
+.intro,
+.placeholder,
+.emptyDescription {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.placeholder {
+  padding: 8px 0;
+}
+
 .header {
   display: flex;
   align-items: flex-start;
@@ -25,13 +58,8 @@
 
 .titleBlock {
   min-width: 0;
-}
-
-.description,
-.placeholder,
-.emptyDescription {
-  color: var(--dsw-alias-label-tertiary);
-  line-height: 1.5;
+  display: grid;
+  gap: 4px;
 }
 
 .statusArea {
@@ -39,73 +67,56 @@
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
-  min-height: 28px;
-}
-
-.statusChip {
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  border: 1px solid transparent;
-  white-space: nowrap;
+  min-height: 24px;
 }
 
 .statusSaved {
-  color: var(--dsw-alias-label-success, var(--dsw-alias-label-secondary));
-  background: color-mix(in srgb, var(--dsw-alias-label-success, var(--dsw-alias-label-secondary)) 12%, transparent);
+  color: var(--dsw-alias-state-success-primary);
 }
 
 .statusDirty {
-  color: var(--dsw-alias-label-warning, var(--dsw-alias-label-secondary));
-  background: color-mix(in srgb, var(--dsw-alias-label-warning, var(--dsw-alias-label-secondary)) 14%, transparent);
-}
-
-.statusSaving {
-  color: var(--dsw-alias-label-secondary);
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-
-.statusReadOnly {
-  color: var(--dsw-alias-label-tertiary);
-  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-state-warn-label);
 }
 
 .empty {
   display: grid;
   justify-items: center;
   gap: 6px;
-  margin: 28px 0;
+  margin: 12px 0;
   padding: 28px 20px;
   border: 1px dashed var(--dsw-alias-border-l2);
-  border-radius: 12px;
+  border-radius: 10px;
   text-align: center;
 }
 
 .emptyTitle {
   margin: 0;
-  color: var(--dsw-alias-label-primary);
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
 }
 
 .emptyDescription {
   max-width: 420px;
-  margin: 0 0 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .groupList {
-  display: grid;
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.group {
+.groupCard {
   display: grid;
   gap: 12px;
   margin: 0;
   padding: 16px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 10px;
+  min-width: 0;
 }
 
 .groupLegend {
@@ -114,7 +125,8 @@
   gap: 8px;
   padding: 0 4px;
   color: var(--dsw-alias-label-secondary);
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .groupBadge {
@@ -124,16 +136,16 @@
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--dsw-alias-bg-layer-2);
   color: var(--dsw-alias-label-secondary);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
 }
 
 .groupTitle {
-  font-weight: 600;
   color: var(--dsw-alias-label-primary);
   word-break: break-all;
+  font-weight: 500;
 }
 
 .groupHeader {
@@ -147,36 +159,57 @@
   display: grid;
   flex: 1 1 220px;
   min-width: 0;
-  gap: 6px;
+  gap: 4px;
+}
+
+.fieldLabel {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.activeBlock {
+  display: grid;
+  gap: 2px;
+  align-self: end;
 }
 
 .active {
-  align-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   white-space: nowrap;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  line-height: 22px;
+  cursor: pointer;
 }
 
-.target input,
-.target select,
-.groupHeader input,
-.groupIdRow input {
-  min-width: 0;
-  padding: 8px 10px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 6px;
-  background: var(--dsw-alias-bg-module-platform);
-  color: inherit;
+.activeHint {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
 }
 
-.target input[aria-invalid='true'],
-.target select[aria-invalid='true'],
-.groupIdRow input[aria-invalid='true'] {
-  border-color: var(--dsw-alias-label-danger);
+/* Native checkboxes and radios take the brand accent; everything else about
+ * them stays platform-native like the other settings pages. */
+.groupCard input[type='radio'],
+.groupCard input[type='checkbox'],
+.advanced input[type='radio'],
+.advanced input[type='checkbox'] {
+  accent-color: var(--dsw-alias-brand-primary);
+  cursor: pointer;
 }
 
 .targetsHeading {
   display: flex;
   align-items: center;
   gap: 8px;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
 }
 
 .targetCount {
@@ -187,35 +220,36 @@
   justify-content: center;
   padding: 0 6px;
   border-radius: 999px;
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--dsw-alias-bg-layer-2);
   color: var(--dsw-alias-label-secondary);
   font-size: 11px;
   font-weight: 600;
 }
 
 .targetList {
-  display: grid;
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+/* One target card: outlined sub-card inside its group card. */
 .target {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: start;
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
 }
 
-.targetIndex {
-  display: inline-flex;
-  width: 8px;
-  padding-top: 34px;
-  align-items: flex-start;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
+.targetTop {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .targetFields {
@@ -223,6 +257,8 @@
   align-items: end;
   gap: 10px;
   flex-wrap: wrap;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .fieldProvider,
@@ -230,24 +266,70 @@
   display: grid;
   flex: 1 1 160px;
   min-width: 0;
-  gap: 6px;
+  gap: 4px;
 }
 
-.retryCount {
+.retryField {
   display: grid;
   flex: 0 0 96px;
-  gap: 6px;
+  gap: 4px;
 }
 
-.retryCount input {
-  width: 100%;
+/* Native select styled to the shared field geometry; the chevron replaces the
+   OS arrow via data URI (#81858C is the caption gray shared by both themes). */
+.selectInput {
   box-sizing: border-box;
+  width: 100%;
+  height: 32px;
+  padding: 0 32px 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  appearance: none;
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  background-color: var(--dsw-alias-bg-layer-1);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%2381858C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px 12px;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+.selectInput:focus {
+  outline: none;
+  border-color: var(--dsw-alias-brand-primary);
+}
+
+.selectInput:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.selectInput[aria-invalid='true'] {
+  border-color: var(--dsw-alias-state-error-primary);
 }
 
 .targetActions {
   display: flex;
-  align-items: end;
+  align-items: center;
   gap: 6px;
+  margin-left: auto;
+}
+
+/* Square icon-only variant of the sm capsule for row actions. */
+.squareButton {
+  width: 28px;
+  padding: 0;
+}
+
+.dangerButton {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.dangerButton:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover-danger);
 }
 
 .addTargetRow {
@@ -255,78 +337,83 @@
 }
 
 .errorList {
-  margin: -4px 0 0;
+  margin: 0;
   padding-left: 0;
   list-style: none;
-  color: var(--dsw-alias-label-danger);
+  color: var(--dsw-alias-state-error-primary);
   font-size: 12px;
-}
-
-.targetErrorList {
-  grid-column: 2 / -1;
+  line-height: 18px;
 }
 
 .codes {
   position: relative;
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 
-.codesLabel {
-  font-size: 14px;
-  color: var(--dsw-alias-label-secondary);
-}
-
-.codeTrigger {
+.codesTrigger {
   display: flex;
   width: 100%;
-  min-height: 48px;
+  min-height: 32px;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 10px;
+  box-sizing: border-box;
+  padding: 4px 12px 4px 10px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 6px;
-  background: var(--dsw-alias-bg-module-platform);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
   text-align: left;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
 }
 
-.codeTrigger[aria-expanded='true'] {
-  border-color: var(--dsw-alias-label-secondary);
+.codesTrigger:hover:not(:disabled) {
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
-.codeTriggerText {
+.codesTrigger:focus-visible {
+  outline: none;
+  border-color: var(--dsw-alias-brand-primary);
+}
+
+.codesTrigger[aria-expanded='true'] {
+  border-color: var(--dsw-alias-brand-primary);
+}
+
+.codesSummary {
   display: grid;
   min-width: 0;
-  gap: 2px;
 }
 
-.codeTriggerText strong {
+.codesSummary strong {
   font-size: 13px;
-  font-weight: 600;
+  line-height: 20px;
+  font-weight: 500;
 }
 
-.codeTriggerText small {
+.codesSummary small {
   overflow: hidden;
   color: var(--dsw-alias-label-tertiary);
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .chevron {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 auto;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: translateY(-2px) rotate(45deg);
+  color: var(--dsw-alias-label-tertiary);
   transition: transform 120ms ease;
+  transform: rotate(0deg);
+  flex: 0 0 auto;
+  display: inline-flex;
 }
 
-.codeTrigger[aria-expanded='true'] .chevron {
-  transform: translateY(2px) rotate(225deg);
+.codesTrigger[aria-expanded='true'] .chevron {
+  transform: rotate(180deg);
 }
 
 .codePopover {
@@ -350,12 +437,6 @@
   border-bottom: 1px solid var(--dsw-alias-border-l2);
 }
 
-.codeToolbar button {
-  padding: 5px 8px;
-  color: var(--dsw-alias-label-secondary);
-  font-size: 12px;
-}
-
 .codeOptions {
   display: grid;
   max-height: 240px;
@@ -371,58 +452,20 @@
   padding: 6px 8px;
   border-radius: 4px;
   cursor: pointer;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  line-height: 22px;
 }
 
 .codeOption:hover {
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
-.codeOption input {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-}
-
 .codeOption span {
   overflow-wrap: anywhere;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
-}
-
-button {
-  padding: 8px 12px;
-  border: 0;
-  border-radius: 6px;
-  background: var(--dsw-alias-bg-module-platform);
-  color: inherit;
-  cursor: pointer;
-}
-
-button:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-
-button:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-
-.primaryButton {
-  background: var(--dsw-alias-interactive-bg-active, var(--dsw-alias-label-primary));
-  color: var(--dsw-alias-bg-module-platform, var(--dsw-alias-bg-base, #fff));
-}
-
-.primaryButton:hover:not(:disabled) {
-  filter: brightness(0.92);
-}
-
-.iconButton {
-  display: inline-flex;
-  width: 32px;
-  height: 36px;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
+  line-height: 18px;
 }
 
 .actions {
@@ -431,7 +474,7 @@ button:disabled {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 12px;
-  margin-top: 20px;
+  margin-top: 8px;
 }
 
 .actionsRight {
@@ -441,8 +484,67 @@ button:disabled {
 }
 
 .error {
-  margin-top: 12px;
-  color: var(--dsw-alias-label-danger);
+  margin: 0;
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* Provider-route retry budget notice above the actions row. */
+.budgetWarning {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 10px 12px;
+  padding-right: 36px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+}
+
+.budgetWarningHead {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+  color: var(--dsw-alias-state-warn-label);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.budgetWarningHead svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.budgetRoutes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0 0 0 24px;
+  list-style: none;
+}
+
+.budgetRoute {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.budgetRouteName {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.budgetDismiss {
+  position: absolute;
+  top: 6px;
+  right: 6px;
 }
 
 @media (max-width: 760px) {
@@ -460,27 +562,21 @@ button:disabled {
     flex-direction: column;
   }
 
-  .target {
-    grid-template-columns: 1fr;
-  }
-
-  .targetIndex {
-    display: none;
-  }
-
-  .targetFields {
+  .targetTop {
     flex-direction: column;
+    align-items: stretch;
   }
 
   .fieldProvider,
   .fieldModel,
-  .retryCount {
+  .retryField {
     width: 100%;
     flex-basis: auto;
   }
 
   .targetActions {
     justify-content: flex-end;
+    margin-left: 0;
   }
 
   .codePopover {
@@ -494,18 +590,18 @@ button:disabled {
 .advanced {
   display: grid;
   gap: 10px;
-  margin-top: 10px;
+  width: 100%;
+  margin-top: 2px;
   padding: 10px 12px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
-  grid-column: 1 / -1;
-  width: 100%;
 }
 
 .advancedHint {
   margin: 0;
   color: var(--dsw-alias-label-tertiary);
   font-size: 12px;
+  line-height: 18px;
 }
 
 .advBlock {
@@ -519,6 +615,8 @@ button:disabled {
   gap: 6px;
   color: var(--dsw-alias-label-primary);
   font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
 }
 
 .advField {
@@ -529,10 +627,11 @@ button:disabled {
 .advField > span {
   color: var(--dsw-alias-label-secondary);
   font-size: 12px;
+  line-height: 18px;
 }
 
-.advField select,
-.advField input {
+.advField :global(.wrap),
+.advField select.selectInput {
   max-width: 260px;
 }
 
@@ -541,6 +640,7 @@ button:disabled {
   gap: 14px;
   color: var(--dsw-alias-label-primary);
   font-size: 13px;
+  line-height: 20px;
 }
 
 .advBackoff {
@@ -549,8 +649,8 @@ button:disabled {
   gap: 10px;
 }
 
-.advBackoff .advField input {
-  width: 120px;
+.advBackoff .advField :global(.wrap) {
+  width: 140px;
 }
 
 .advCodes {
@@ -559,28 +659,15 @@ button:disabled {
   gap: 6px;
 }
 
-.advCodeChip {
-  padding: 3px 8px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 999px;
-  color: var(--dsw-alias-label-secondary);
-  font-size: 12px;
-}
-
-.advCodeChip:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+/* Disabled removable-code chips keep their shape but read inert. */
+.advDisabled {
+  opacity: 0.4;
 }
 
 .advCodeAdd {
-  max-width: 160px;
-  font-size: 12px;
-}
-
-.advDefaults {
-  justify-self: start;
-  padding: 4px 10px;
-  color: var(--dsw-alias-label-secondary);
-  font-size: 12px;
+  max-width: 180px;
+  font-size: 13px;
+  line-height: 18px;
 }
 
 .advLevelRow {

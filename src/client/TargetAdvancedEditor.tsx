@@ -6,6 +6,7 @@
  */
 
 import type { ReactNode } from 'react'
+import { Button, Input, Pill, IconCloseFill14 } from '@deepseek-ai/dsh-client-ui-primitives'
 import styles from './FailoverSettingsSection.module.css'
 import type { FailoverSettingsKey } from './locales.ts'
 import type {
@@ -54,7 +55,7 @@ function RetryPolicyEditor(props: TargetAdvancedEditorProps): ReactNode {
   ): ReactNode => (
     <label className={styles.advField}>
       <span>{label}</span>
-      <input
+      <Input
         type="number"
         inputMode="decimal"
         value={retry[key]}
@@ -105,19 +106,17 @@ function RetryPolicyEditor(props: TargetAdvancedEditorProps): ReactNode {
                 <span>{t('advRetryableCodes')}</span>
                 <div className={styles.advCodes}>
                   {retry.retryableCodes.map(code => (
-                    <button
+                    <Pill
                       key={code}
-                      type="button"
-                      className={styles.advCodeChip}
-                      disabled={disabled}
+                      className={disabled ? styles.advDisabled : undefined}
                       title={t('advCodeRemove')}
-                      onClick={() => patchRetry(props, {
+                      onClick={disabled ? undefined : () => patchRetry(props, {
                         retryableCodes: retry.retryableCodes.filter(item => item !== code),
                       })}
                     >
                       {code}
-                      <span aria-hidden="true"> ×</span>
-                    </button>
+                      <IconCloseFill14 />
+                    </Pill>
                   ))}
                   <AddCodeControl
                     existing={retry.retryableCodes}
@@ -134,9 +133,9 @@ function RetryPolicyEditor(props: TargetAdvancedEditorProps): ReactNode {
             {numericField('maxDelayMs', t('advMaxDelay'))}
             {numericField('jitterRatio', t('advJitter'))}
           </div>
-          <button
-            type="button"
-            className={styles.advDefaults}
+          <Button
+            variant="ghost"
+            size="sm"
             disabled={disabled}
             onClick={() => patchRetry(props, {
               mode: 'normal',
@@ -148,7 +147,7 @@ function RetryPolicyEditor(props: TargetAdvancedEditorProps): ReactNode {
             })}
           >
             {t('advRetryDefaults')}
-          </button>
+          </Button>
         </>
       )}
     </div>
@@ -164,7 +163,7 @@ function AddCodeControl(props: {
   const choices = RETRY_DEFAULTS.retryableCodes.filter(code => !props.existing.includes(code))
   return (
     <select
-      className={styles.advCodeAdd}
+      className={`${styles.selectInput} ${styles.advCodeAdd}`}
       value=""
       disabled={props.disabled}
       aria-label={props.t('advCodeAdd')}
@@ -185,6 +184,7 @@ function ReasoningEditor(props: TargetAdvancedEditorProps): ReactNode {
       <div className={styles.advField}>
         <span>{t('advEffort')}</span>
         <select
+          className={styles.selectInput}
           value={draft.reasoningEffort}
           disabled={disabled || props.effortOptions.length === 0}
           aria-label={t('advEffort')}
@@ -208,6 +208,7 @@ function ReasoningEditor(props: TargetAdvancedEditorProps): ReactNode {
         <div className={styles.advField}>
           <span>{t('advReasoningDefault')}</span>
           <select
+            className={styles.selectInput}
             value={draft.reasoning}
             disabled={disabled || props.reasoningLevels.length === 0}
             aria-label={t('advReasoningDefault')}
@@ -248,9 +249,9 @@ function ReasoningEditor(props: TargetAdvancedEditorProps): ReactNode {
                         {level}
                       </label>
                       {entry.enabled && (
-                        <input
+                        <Input
                           type="text"
-                          className={styles.advSpelling}
+                          className={styles.advSpelling ?? ''}
                           value={entry.spelling}
                           placeholder={level}
                           disabled={disabled}

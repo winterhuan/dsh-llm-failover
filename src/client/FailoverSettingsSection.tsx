@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ConfigurableProviderView, IApiClient, ModelProviderGroup, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import {
+  Button, Input, Pill,
+  IconCheckOutline14, IconChevronDownOutline14, IconChevronUpOutline14,
+  IconCloseOutline16, IconPlusOutline16,
+  IconSettingsOutline16, IconTrashOutline16, IconWarningOutline16,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import styles from './FailoverSettingsSection.module.css'
 import type { FailoverSettingsKey } from './locales.ts'
 import { TargetAdvancedEditor } from './TargetAdvancedEditor.tsx'
@@ -46,7 +52,8 @@ interface ProviderOption {
 
 /** Client-only draft that adds a stable id for React keying. */
 interface DraftTarget extends Target {
-  retryCount: number
+  /** Raw input text; parsed at validation and save time. */
+  retryCountText: string
   draftId: string
 }
 
@@ -86,7 +93,7 @@ function nextDraftId(): string {
 }
 
 function emptyTarget(): DraftTarget {
-  return { provider: '', model: '', retryCount: 0, draftId: nextDraftId() }
+  return { provider: '', model: '', retryCountText: '0', draftId: nextDraftId() }
 }
 
 function emptyGroup(): DraftGroup {
@@ -97,7 +104,7 @@ function emptyGroup(): DraftGroup {
   }
 }
 
-/** Take a settings view and return a draft with stable client-only ids and a numeric retryCount. */
+/** Take a settings view and return a draft with stable client-only ids and raw retry-count text. */
 function valueOf(view: SettingsView): DraftValue {
   return {
     groups: (view.value.groups ?? []).map(group => ({
@@ -105,7 +112,7 @@ function valueOf(view: SettingsView): DraftValue {
       draftId: nextDraftId(),
       targets: group.targets.map(target => ({
         ...target,
-        retryCount: target.retryCount ?? 0,
+        retryCountText: String(target.retryCount ?? 0),
         draftId: nextDraftId(),
       })),
     })),
@@ -113,12 +120,22 @@ function valueOf(view: SettingsView): DraftValue {
   }
 }
 
+/** Parse one retry-count draft; `undefined` marks text the host would reject. */
+function parseRetryCount(text: string): number | undefined {
+  if (!INTEGER_RX.test(text)) return undefined
+  const value = Number(text)
+  if (!Number.isSafeInteger(value) || value < 0) return undefined
+  return value
+}
+
 /** Strip client-only fields and yield the runtime value submitted to the host. */
 function valueToSave(value: DraftValue): FormValue {
   return {
     groups: value.groups.map(group => ({
       id: group.id,
-      targets: group.targets.map(({ provider, model, retryCount }) => ({ provider, model, retryCount })),
+      targets: group.targets.map(({ provider, model, retryCountText }) => ({
+        provider, model, retryCount: parseRetryCount(retryCountText) ?? 0,
+      })),
       ...(group.retryableCodes === undefined ? {} : { retryableCodes: [...group.retryableCodes] }),
     })),
     ...(value.activeGroup === undefined ? {} : { activeGroup: value.activeGroup }),
@@ -193,7 +210,7 @@ function validateGroup(group: DraftGroup, seenIds: Set<string>): GroupErrors {
   group.targets.forEach((target, index) => {
     if (target.provider.length === 0) targetErrors[index]!.push('EMPTY_PROVIDER')
     if (target.model.length === 0) targetErrors[index]!.push('EMPTY_MODEL')
-    if (!Number.isSafeInteger(target.retryCount) || target.retryCount < 0) {
+    if (parseRetryCount(target.retryCountText) === undefined) {
       targetErrors[index]!.push('INVALID_RETRY_COUNT')
     }
   })
@@ -211,12 +228,23 @@ function validateGroup(group: DraftGroup, seenIds: Set<string>): GroupErrors {
   return { id: idErrors, targets: targetErrors }
 }
 
-/** Top-level validation snapshot used to gate the Save button. */
-function validateValue(value: DraftValue): { groupErrors: GroupErrors[]; ok: boolean } {
+/**
+ * Top-level validation snapshot used to gate the Save button. `topErrors`
+ * carries document-wide rules such as a dangling active-group reference.
+ */
+function validateValue(value: DraftValue): { groupErrors: GroupErrors[]; topErrors: string[]; ok: boolean } {
   const ids = new Set<string>()
   const groupErrors = value.groups.map(group => validateGroup(group, ids))
-  const ok = groupErrors.every(group => group.id.length === 0 && group.targets.every(row => row.length === 0))
-  return { groupErrors, ok }
+  const topErrors: string[] = []
+  // An empty id never anchors the reference: clearing an active group's name
+  // dangles it just like a rename to a foreign id would.
+  if (value.activeGroup !== undefined
+    && !value.groups.some(group => group.id.length > 0 && group.id === value.activeGroup)) {
+    topErrors.push('ACTIVE_GROUP_MISSING')
+  }
+  const ok = topErrors.length === 0
+    && groupErrors.every(group => group.id.length === 0 && group.targets.every(row => row.length === 0))
+  return { groupErrors, topErrors, ok }
 }
 
 function tValidationError(t: Translation, code: string): string {
@@ -226,7 +254,9 @@ function tValidationError(t: Translation, code: string): string {
 }
 
 interface RetryableCodeSelectProps {
-  group: Group
+  group: DraftGroup
+  /** Unique id stem (per draft group) for the label/hint aria wiring. */
+  idStem: string
   label: string
   countLabel: (count: number) => string
   emptyLabel: string
@@ -237,7 +267,7 @@ interface RetryableCodeSelectProps {
 }
 
 function RetryableCodeSelect({
-  group, label, countLabel, emptyLabel, defaultsLabel, clearLabel, ariaHint, onChange,
+  group, idStem, label, countLabel, emptyLabel, defaultsLabel, clearLabel, ariaHint, onChange,
 }: RetryableCodeSelectProps) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
@@ -246,8 +276,10 @@ function RetryableCodeSelect({
 
   useEffect(() => {
     if (!open) return
-    const close = (event: MouseEvent): void => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false)
+    // Both pointer event names: browsers fire pointerdown everywhere, and the
+    // mousedown twin keeps synthetic jsdom events working.
+    const close = (event: Event): void => {
+      if (event.target instanceof Node && !root.current?.contains(event.target)) setOpen(false)
     }
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
@@ -255,9 +287,11 @@ function RetryableCodeSelect({
         trigger.current?.focus()
       }
     }
+    document.addEventListener('pointerdown', close)
     document.addEventListener('mousedown', close)
     document.addEventListener('keydown', onKey)
     return () => {
+      document.removeEventListener('pointerdown', close)
       document.removeEventListener('mousedown', close)
       document.removeEventListener('keydown', onKey)
     }
@@ -267,28 +301,28 @@ function RetryableCodeSelect({
 
   return (
     <div className={styles.codes} ref={root}>
-      <span className={styles.codesLabel} id="failover-codes-label">{label}</span>
+      <span className={styles.fieldLabel} id={`${idStem}-label`}>{label}</span>
       <button
         type="button"
         ref={trigger}
-        className={styles.codeTrigger}
+        className={styles.codesTrigger}
         aria-expanded={open}
         aria-haspopup="listbox"
-        aria-describedby="failover-codes-hint"
+        aria-describedby={`${idStem}-hint`}
         onClick={() => setOpen(prev => !prev)}
       >
-        <span className={styles.codeTriggerText}>
+        <span className={styles.codesSummary}>
           <strong>{summary}</strong>
           {selected.length > 0 && <small>{selected.join(', ')}</small>}
         </span>
-        <span className={styles.chevron} aria-hidden="true" />
+        <span className={styles.chevron} aria-hidden="true"><IconChevronDownOutline14 /></span>
       </button>
-      <span id="failover-codes-hint" className={styles.srOnly}>{ariaHint}</span>
+      <span id={`${idStem}-hint`} className={styles.srOnly}>{ariaHint}</span>
       {open && (
         <div className={styles.codePopover} role="listbox" aria-multiselectable="true" aria-label={label}>
           <div className={styles.codeToolbar}>
-            <button type="button" onClick={() => onChange([...DEFAULT_RETRYABLE_CODES])}>{defaultsLabel}</button>
-            <button type="button" onClick={() => onChange([])}>{clearLabel}</button>
+            <Button variant="ghost" size="sm" onClick={() => onChange([...DEFAULT_RETRYABLE_CODES])}>{defaultsLabel}</Button>
+            <Button variant="ghost" size="sm" onClick={() => onChange([])}>{clearLabel}</Button>
           </div>
           <div className={styles.codeOptions}>
             {retryableCodeOptions(group).map(code => {
@@ -313,6 +347,16 @@ function RetryableCodeSelect({
   )
 }
 
+/** One provider route whose stored retry policy still retries before the group may switch. */
+interface RouteBudgetWarning {
+  provider: string
+  displayName: string
+  ns: string
+  path: string[]
+  revision: number
+  effective: Record<string, unknown>
+}
+
 /** Edit ordered model groups in the host settings document. */
 export function FailoverSettingsSection({ api, t, onInvalidated }: Props) {
   const [view, setView] = useState<SettingsView | undefined>()
@@ -328,18 +372,27 @@ export function FailoverSettingsSection({ api, t, onInvalidated }: Props) {
   const [advanced, setAdvanced] = useState<Record<string, RouteAdvancedDraft>>({})
   const [advancedBaseline, setAdvancedBaseline] = useState<Record<string, string>>({})
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [budgetDismissed, setBudgetDismissed] = useState(false)
+  // Last loaded (or saved) advanced drafts; Discard restores them.
+  const [advancedSaved, setAdvancedSaved] = useState<{
+    drafts: Record<string, RouteAdvancedDraft>
+    baselines: Record<string, string>
+  } | undefined>(undefined)
   const providersRef = useRef<ConfigurableProviderView[]>([])
   providersRef.current = providerViews
   const advancedDirtyRef = useRef(false)
+  const loadSeqRef = useRef(0)
+  const loadAbortRef = useRef<AbortController | undefined>(undefined)
 
   /**
    * Load the advanced (provider profile) data over `settings.describe`. The
    * call is loopback-only, like the page's own settings route; a rejection
    * degrades the advanced editors instead of failing the page.
    */
-  const loadAdvanced = async (entries: ConfigurableProviderView[]): Promise<void> => {
+  const loadAdvanced = async (entries: ConfigurableProviderView[], signal?: AbortSignal): Promise<void> => {
     try {
-      const described = await api.settings.describe({})
+      const described = await api.settings.describe({}, signal)
+      if (signal?.aborted) return
       if (!described.result.ok) {
         setNamespaces(null)
         return
@@ -354,10 +407,13 @@ export function FailoverSettingsSection({ api, t, onInvalidated }: Props) {
         drafts[entry.provider] = draft
         baselines[entry.provider] = fingerprint(draft)
       }
+      if (signal?.aborted) return
       setNamespaces(map)
       setAdvanced(drafts)
       setAdvancedBaseline(baselines)
+      setAdvancedSaved({ drafts: structuredClone(drafts), baselines })
     } catch (cause) {
+      if (signal?.aborted) return
       void cause
       setNamespaces(null)
     }
@@ -365,31 +421,48 @@ export function FailoverSettingsSection({ api, t, onInvalidated }: Props) {
   const loadAdvancedRef = useRef(loadAdvanced)
   loadAdvancedRef.current = loadAdvanced
 
+  /**
+   * Load everything the page renders. Each run takes a sequence number and an
+   * abort controller; a superseded or aborted run applies no state at all.
+   */
   const load = async (): Promise<void> => {
+    const seq = ++loadSeqRef.current
+    const controller = new AbortController()
+    loadAbortRef.current = controller
+    const { signal } = controller
     setStatus('loading')
     setError(undefined)
-    const settingsResponse = await fetch(SETTINGS_ROUTE)
-    if (settingsResponse.status === 404 || settingsResponse.status === 503) {
-      setStatus('unavailable')
-      return
+    try {
+      const settingsResponse = await fetch(SETTINGS_ROUTE, { signal })
+      if (settingsResponse.status === 404 || settingsResponse.status === 503) {
+        if (seq !== loadSeqRef.current || signal.aborted) return
+        setStatus('unavailable')
+        return
+      }
+      const next = await readResponse(settingsResponse)
+      const [providersResponse, modelsResponse] = await Promise.all([
+        api.llm.providers({}, signal),
+        api.llm.models({}, signal),
+      ])
+      if (seq !== loadSeqRef.current || signal.aborted) return
+      if (!providersResponse.result.ok) throw new Error(providersResponse.result.error.message)
+      if (!modelsResponse.result.ok) throw new Error(modelsResponse.result.error.message)
+      const entries = providersResponse.result.value.providers
+      setProviders(entries
+        .filter(provider => provider.active)
+        .map(provider => ({ id: provider.provider, name: provider.displayName })))
+      setProviderViews(entries)
+      setModelGroups(modelsResponse.result.value.groups)
+      setView(next)
+      setValue(valueOf(next))
+      setStatus('ready')
+      await loadAdvancedRef.current(entries, signal)
+    } catch (cause) {
+      if (signal.aborted || (cause instanceof DOMException && cause.name === 'AbortError')) return
+      if (seq !== loadSeqRef.current) return
+      setError(cause instanceof Error ? cause.message : String(cause))
+      setStatus('error')
     }
-    const next = await readResponse(settingsResponse)
-    const [providersResponse, modelsResponse] = await Promise.all([
-      api.llm.providers({}),
-      api.llm.models({}),
-    ])
-    if (!providersResponse.result.ok) throw new Error(providersResponse.result.error.message)
-    if (!modelsResponse.result.ok) throw new Error(modelsResponse.result.error.message)
-    const entries = providersResponse.result.value.providers
-    setProviders(entries
-      .filter(provider => provider.active)
-      .map(provider => ({ id: provider.provider, name: provider.displayName })))
-    setProviderViews(entries)
-    setModelGroups(modelsResponse.result.value.groups)
-    setView(next)
-    setValue(valueOf(next))
-    setStatus('ready')
-    await loadAdvanced(entries)
   }
 
   useEffect(() => {
@@ -397,6 +470,9 @@ export function FailoverSettingsSection({ api, t, onInvalidated }: Props) {
       setError(cause instanceof Error ? cause.message : String(cause))
       setStatus('error')
     })
+    return () => {
+      loadAbortRef.current?.abort()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api])
 
@@ -435,6 +511,37 @@ export function FailoverSettingsSection({ api, t, onInvalidated }: Props) {
     && (validation?.ok ?? false)
     && Object.keys(advancedErrors).length === 0
     && (view?.writable ?? false)
+
+  /**
+   * Routes referenced by the draft whose stored retry policy retries at the
+   * provider level before this plugin can advance the group. A policy is
+   * quiet only when normal-mode retries are explicitly zero.
+   */
+  const budgetWarnings = useMemo<RouteBudgetWarning[]>(() => {
+    if (namespaces === undefined || namespaces === null || view?.writable === false || value === undefined) return []
+    const referenced = new Set(value.groups.flatMap(group => group.targets.map(target => target.provider)))
+    const warnings: RouteBudgetWarning[] = []
+    for (const entry of providerViews) {
+      if (!referenced.has(entry.provider)) continue
+      if (layoutOf(entry.settingsNs) === 'unknown') continue
+      const namespace = namespaces.get(entry.settingsNs)
+      if (namespace === undefined) continue
+      const path = [...entry.settingsPath, 'retryPolicy']
+      const policy = getPathValue(namespace.value, path)
+      const record = typeof policy === 'object' && policy !== null ? policy as Record<string, unknown> : undefined
+      const quiet = record?.['mode'] === 'normal' && record['maxRetries'] === 0
+      if (quiet) continue
+      warnings.push({
+        provider: entry.provider,
+        displayName: entry.displayName,
+        ns: entry.settingsNs,
+        path,
+        revision: namespace.revision,
+        effective: record ?? {},
+      })
+    }
+    return warnings
+  }, [namespaces, providerViews, value, view])
 
   const save = async (): Promise<void> => {
     if (view === undefined || value === undefined) return
@@ -489,11 +596,39 @@ export function FailoverSettingsSection({ api, t, onInvalidated }: Props) {
     }
   }
 
+  /** Zero one warned route's provider-level retries through the standard mutate wire. */
+  const alignRetryBudget = async (warning: RouteBudgetWarning): Promise<void> => {
+    setError(undefined)
+    try {
+      const mutated = await api.settings.mutate({
+        ns: warning.ns,
+        ops: [{ op: 'set', path: warning.path, value: { ...warning.effective, mode: 'normal', maxRetries: 0 } }],
+        expectedRevision: warning.revision,
+      })
+      if (!mutated.result.ok) {
+        setError(mutated.result.error.code === 'settings-conflict' ? t('advConflict') : mutated.result.error.message)
+        setStatus('error')
+        await loadAdvanced(providerViews)
+        return
+      }
+      await loadAdvanced(providerViews)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+      setStatus('error')
+    }
+  }
+
   const discard = (): void => {
     if (savedValue === undefined) return
     setValue(valueOf({ value: valueToSave(savedValue), revision: view?.revision ?? 0, writable: view?.writable ?? true }))
     setError(undefined)
     setStatus('ready')
+    if (advancedSaved !== undefined) {
+      setAdvanced(structuredClone(advancedSaved.drafts))
+      setAdvancedBaseline({ ...advancedSaved.baselines })
+    } else {
+      void loadAdvancedRef.current(providersRef.current)
+    }
   }
 
   if (status === 'loading') return <p className={styles.placeholder}>{t('loading')}</p>
@@ -504,6 +639,16 @@ export function FailoverSettingsSection({ api, t, onInvalidated }: Props) {
     ...value,
     groups: value.groups.map((item, itemIndex) => itemIndex === index ? group : item),
   })
+
+  /** Renaming follows the active-group reference so a rename never dangles it. */
+  const renameGroup = (index: number, id: string): void => {
+    const previousId = value.groups[index]!.id
+    setValue({
+      ...value,
+      groups: value.groups.map((item, itemIndex) => itemIndex === index ? { ...item, id } : item),
+      activeGroup: value.activeGroup === previousId ? id : value.activeGroup,
+    })
+  }
 
   const addGroup = (): void => setValue({ ...value, groups: [...value.groups, emptyGroup()] })
 
@@ -564,32 +709,27 @@ export function FailoverSettingsSection({ api, t, onInvalidated }: Props) {
     updateGroup(groupIndex, { ...group, targets })
   }
 
-  const retryCountFromInput = (raw: string): number => {
-    if (raw === '' || !INTEGER_RX.test(raw)) return 0
-    return Math.max(0, Math.trunc(Number(raw)))
-  }
-
   const empty = value.groups.length === 0
 
   return (
     <section className={styles.page}>
       <header className={styles.header}>
         <div className={styles.titleBlock}>
-          <h2>{t('title')}</h2>
-          <p className={styles.description}>{t('description')}</p>
+          <h2 className={styles.title}>{t('title')}</h2>
+          <p className={styles.intro}>{t('description')}</p>
         </div>
         <div className={styles.statusArea} aria-live="polite">
           {status === 'saved' && !dirty && (
-            <span className={`${styles.statusChip} ${styles.statusSaved}`}>{t('saved')}</span>
+            <Pill className={styles.statusSaved}><IconCheckOutline14 />{t('saved')}</Pill>
           )}
           {dirty && status !== 'saving' && (
-            <span className={`${styles.statusChip} ${styles.statusDirty}`}>{t('unsaved')}</span>
+            <Pill className={styles.statusDirty}>{t('unsaved')}</Pill>
           )}
           {status === 'saving' && (
-            <span className={`${styles.statusChip} ${styles.statusSaving}`}>{t('saving')}</span>
+            <Pill>{t('saving')}</Pill>
           )}
           {view?.writable === false && (
-            <span className={`${styles.statusChip} ${styles.statusReadOnly}`}>{t('readOnly')}</span>
+            <Pill>{t('readOnly')}</Pill>
           )}
         </div>
       </header>
@@ -598,7 +738,7 @@ export function FailoverSettingsSection({ api, t, onInvalidated }: Props) {
         <div className={styles.empty} role="status">
           <p className={styles.emptyTitle}>{t('emptyTitle')}</p>
           <p className={styles.emptyDescription}>{t('emptyDescription')}</p>
-          <button type="button" className={styles.primaryButton} onClick={addGroup}>{t('addGroup')}</button>
+          <Button variant="primary" icon={<IconPlusOutline16 />} onClick={addGroup}>{t('addGroup')}</Button>
         </div>
       ) : (
         <div className={styles.groupList}>
@@ -608,7 +748,7 @@ export function FailoverSettingsSection({ api, t, onInvalidated }: Props) {
             const groupId = group.id.length === 0 ? t('newGroup') : group.id
             return (
               <fieldset
-                className={styles.group}
+                className={styles.groupCard}
                 key={group.draftId}
                 aria-invalid={errors.id.length > 0 ? 'true' : undefined}
               >
@@ -618,30 +758,35 @@ export function FailoverSettingsSection({ api, t, onInvalidated }: Props) {
                 </legend>
                 <div className={styles.groupHeader}>
                   <label className={styles.groupIdRow}>
-                    <span>{t('groupId')}</span>
-                    <input
+                    <span className={styles.fieldLabel}>{t('groupId')}</span>
+                    <Input
                       value={group.id}
                       aria-invalid={errors.id.length > 0 ? 'true' : undefined}
                       aria-describedby={errors.id.length > 0 ? `err-${group.draftId}` : undefined}
-                      onChange={event => updateGroup(groupIndex, { ...group, id: event.target.value })}
+                      onChange={event => renameGroup(groupIndex, event.target.value)}
                     />
                   </label>
-                  <label className={styles.active}>
-                    <input
-                      type="radio"
-                      name="activeGroup"
-                      checked={isActive}
-                      onChange={() => setActive(group.id)}
-                    />
-                    {t('active')}
-                  </label>
-                  <button
-                    type="button"
+                  <div className={styles.activeBlock}>
+                    <label className={styles.active}>
+                      <input
+                        type="radio"
+                        name="activeGroup"
+                        checked={isActive}
+                        onChange={() => setActive(group.id)}
+                      />
+                      {t('active')}
+                    </label>
+                    <p className={styles.activeHint}>{t('activeHint')}</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     className={styles.dangerButton}
                     onClick={() => removeGroup(groupIndex)}
                   >
+                    <IconTrashOutline16 />
                     {t('removeGroup')}
-                  </button>
+                  </Button>
                 </div>
                 {errors.id.length > 0 && (
                   <ul className={styles.errorList} id={`err-${group.draftId}`} role="alert">
@@ -690,100 +835,108 @@ export function FailoverSettingsSection({ api, t, onInvalidated }: Props) {
                     }
                     return (
                       <li className={styles.target} key={target.draftId}>
-                        <div className={styles.targetIndex} aria-hidden="true">{targetLabel(targetIndex)}</div>
-                        <div className={styles.targetFields}>
-                          <label className={styles.fieldProvider}>
-                            <span>{t('provider')}</span>
-                            <select
-                              value={target.provider}
-                              aria-invalid={targetErr.includes('EMPTY_PROVIDER') ? 'true' : undefined}
-                              onChange={event => resetModelForProvider(groupIndex, targetIndex, event.target.value)}
+                        <div className={styles.targetTop}>
+                          <div className={styles.targetFields}>
+                            <label className={styles.fieldProvider}>
+                              <span className={styles.fieldLabel}>{t('provider')}</span>
+                              <select
+                                className={styles.selectInput}
+                                value={target.provider}
+                                aria-invalid={targetErr.includes('EMPTY_PROVIDER') ? 'true' : undefined}
+                                onChange={event => resetModelForProvider(groupIndex, targetIndex, event.target.value)}
+                              >
+                                <option value="">{t('selectProvider')}</option>
+                                {providers.map(provider => (
+                                  <option value={provider.id} key={provider.id}>
+                                    {optionLabel(provider.id, provider.name)}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className={styles.fieldModel}>
+                              <span className={styles.fieldLabel}>{t('model')}</span>
+                              <select
+                                className={styles.selectInput}
+                                value={target.model}
+                                disabled={target.provider.length === 0}
+                                aria-invalid={targetErr.includes('EMPTY_MODEL') ? 'true' : undefined}
+                                onChange={event => updateTarget(groupIndex, targetIndex, { model: event.target.value })}
+                              >
+                                <option value="">{t('selectModel')}</option>
+                                {modelOptions(modelGroups, target.provider, target.model).map(model => (
+                                  <option value={model.id} key={model.id}>{optionLabel(model.id, model.name)}</option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className={styles.retryField}>
+                              <span className={styles.fieldLabel}>{t('retryCount')}</span>
+                              <Input
+                                type="number"
+                                min="0"
+                                step="1"
+                                inputMode="numeric"
+                                value={target.retryCountText}
+                                aria-invalid={targetErr.includes('INVALID_RETRY_COUNT') ? 'true' : undefined}
+                                onChange={event => updateTarget(groupIndex, targetIndex, {
+                                  retryCountText: event.target.value,
+                                })}
+                              />
+                            </label>
+                          </div>
+                          <div className={styles.targetActions}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className={styles.squareButton}
+                              disabled={targetIndex === 0}
+                              aria-label={t('moveTargetUp', { index: targetLabel(targetIndex) })}
+                              title={t('moveTargetUp', { index: targetLabel(targetIndex) })}
+                              onClick={() => moveTarget(groupIndex, targetIndex, -1)}
                             >
-                              <option value="">{t('selectProvider')}</option>
-                              {providers.map(provider => (
-                                <option value={provider.id} key={provider.id}>
-                                  {optionLabel(provider.id, provider.name)}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className={styles.fieldModel}>
-                            <span>{t('model')}</span>
-                            <select
-                              value={target.model}
-                              disabled={target.provider.length === 0}
-                              aria-invalid={targetErr.includes('EMPTY_MODEL') ? 'true' : undefined}
-                              onChange={event => updateTarget(groupIndex, targetIndex, { model: event.target.value })}
+                              <IconChevronUpOutline14 />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className={styles.squareButton}
+                              disabled={targetIndex === group.targets.length - 1}
+                              aria-label={t('moveTargetDown', { index: targetLabel(targetIndex) })}
+                              title={t('moveTargetDown', { index: targetLabel(targetIndex) })}
+                              onClick={() => moveTarget(groupIndex, targetIndex, 1)}
                             >
-                              <option value="">{t('selectModel')}</option>
-                              {modelOptions(modelGroups, target.provider, target.model).map(model => (
-                                <option value={model.id} key={model.id}>{optionLabel(model.id, model.name)}</option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className={styles.retryCount}>
-                            <span>{t('retryCount')}</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="1"
-                              inputMode="numeric"
-                              value={target.retryCount}
-                              aria-invalid={targetErr.includes('INVALID_RETRY_COUNT') ? 'true' : undefined}
-                              onChange={event => updateTarget(groupIndex, targetIndex, {
-                                retryCount: retryCountFromInput(event.target.value),
-                              })}
-                            />
-                          </label>
-                        </div>
-                        <div className={styles.targetActions}>
-                          <button
-                            type="button"
-                            className={styles.iconButton}
-                            disabled={targetIndex === 0}
-                            aria-label={t('moveTargetUp', { index: targetLabel(targetIndex) })}
-                            title={t('moveTargetUp', { index: targetLabel(targetIndex) })}
-                            onClick={() => moveTarget(groupIndex, targetIndex, -1)}
-                          >
-                            <span aria-hidden="true">↑</span>
-                          </button>
-                          <button
-                            type="button"
-                            className={styles.iconButton}
-                            disabled={targetIndex === group.targets.length - 1}
-                            aria-label={t('moveTargetDown', { index: targetLabel(targetIndex) })}
-                            title={t('moveTargetDown', { index: targetLabel(targetIndex) })}
-                            onClick={() => moveTarget(groupIndex, targetIndex, 1)}
-                          >
-                            <span aria-hidden="true">↓</span>
-                          </button>
-                          <button
-                            type="button"
-                            className={styles.dangerButton}
-                            disabled={group.targets.length <= MIN_TARGETS}
-                            title={t('removeTarget', { index: targetLabel(targetIndex) })}
-                            onClick={() => removeTarget(groupIndex, targetIndex)}
-                          >
-                            {t('remove')}
-                          </button>
-                          {target.provider.length > 0 && (
-                            <button
-                              type="button"
-                              className={styles.iconButton}
-                              aria-expanded={expanded[target.draftId] === true}
-                              aria-label={t('advToggle')}
-                              title={t('advToggle')}
-                              onClick={() => setExpanded(current => ({
-                                ...current,
-                                [target.draftId]: current[target.draftId] !== true,
-                              }))}
+                              <IconChevronDownOutline14 />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className={styles.dangerButton}
+                              disabled={group.targets.length <= MIN_TARGETS}
+                              title={t('removeTarget', { index: targetLabel(targetIndex) })}
+                              onClick={() => removeTarget(groupIndex, targetIndex)}
                             >
-                              <span aria-hidden="true">⚙</span>
-                            </button>
-                          )}
+                              <IconTrashOutline16 />
+                              {t('remove')}
+                            </Button>
+                            {target.provider.length > 0 && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className={styles.squareButton}
+                                aria-expanded={expanded[target.draftId] === true}
+                                aria-label={t('advToggle')}
+                                title={t('advToggle')}
+                                onClick={() => setExpanded(current => ({
+                                  ...current,
+                                  [target.draftId]: current[target.draftId] !== true,
+                                }))}
+                              >
+                                <IconSettingsOutline16 />
+                              </Button>
+                            )}
+                          </div>
                         </div>
                         {targetErr.length > 0 && (
-                          <ul className={`${styles.errorList} ${styles.targetErrorList}`} role="alert">
+                          <ul className={styles.errorList} role="alert">
                             {targetErr.map(code => <li key={code}>{tValidationError(t, code)}</li>)}
                           </ul>
                         )}
@@ -821,10 +974,13 @@ export function FailoverSettingsSection({ api, t, onInvalidated }: Props) {
                   })}
                 </ol>
                 <div className={styles.addTargetRow}>
-                  <button type="button" onClick={() => addTarget(groupIndex)}>{t('addTarget')}</button>
+                  <Button variant="ghost" size="sm" icon={<IconPlusOutline16 />} onClick={() => addTarget(groupIndex)}>
+                    {t('addTarget')}
+                  </Button>
                 </div>
                 <RetryableCodeSelect
                   group={group}
+                  idStem={`failover-codes-${group.draftId}`}
                   label={t('codes')}
                   countLabel={count => t('codesSelected', { count })}
                   emptyLabel={t('noCodes')}
@@ -839,28 +995,65 @@ export function FailoverSettingsSection({ api, t, onInvalidated }: Props) {
         </div>
       )}
 
+      {budgetWarnings.length > 0 && !budgetDismissed && (
+        <div className={styles.budgetWarning} role="note">
+          <div className={styles.budgetWarningHead}>
+            <IconWarningOutline16 />
+            <p className={styles.advancedHint}>{t('budgetWarning')}</p>
+          </div>
+          <ul className={styles.budgetRoutes}>
+            {budgetWarnings.map(warning => (
+              <li className={styles.budgetRoute} key={warning.provider}>
+                <span className={styles.budgetRouteName}>{optionLabel(warning.provider, warning.displayName)}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={status === 'saving'}
+                  onClick={() => { void alignRetryBudget(warning) }}
+                >
+                  {t('budgetAlign')}
+                </Button>
+              </li>
+            ))}
+          </ul>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={`${styles.squareButton} ${styles.budgetDismiss}`}
+            aria-label={t('budgetDismiss')}
+            title={t('budgetDismiss')}
+            onClick={() => setBudgetDismissed(true)}
+          >
+            <IconCloseOutline16 />
+          </Button>
+        </div>
+      )}
+
+      {validation !== null && validation.topErrors.map(code => (
+        <p key={code} role="alert" className={styles.error}>{tValidationError(t, code)}</p>
+      ))}
+
       <div className={styles.actions}>
-        <button type="button" className={styles.primaryButton} onClick={addGroup}>
+        <Button variant="ghost" icon={<IconPlusOutline16 />} onClick={addGroup}>
           {t('addGroup')}
-        </button>
+        </Button>
         <div className={styles.actionsRight}>
-          {dirty && (
-            <button
-              type="button"
+          {(dirty || advancedDirty) && (
+            <Button
+              variant="outline"
               disabled={status === 'saving'}
-              onClick={() => { if (dirty) discard() }}
+              onClick={() => { discard() }}
             >
               {t('discard')}
-            </button>
+            </Button>
           )}
-          <button
-            type="button"
-            className={styles.primaryButton}
+          <Button
+            variant="primary"
             disabled={!canSave}
             onClick={() => { void save() }}
           >
             {status === 'saving' ? t('saving') : t('save')}
-          </button>
+          </Button>
         </div>
       </div>
 

@@ -89,6 +89,9 @@ describe('FailoverSettingsSection', () => {
           configured.groups[0]!.targets[1],
         ],
       }],
+      // Renaming a group carries the active-group reference with it instead
+      // of leaving it dangling on the old id.
+      activeGroup: 'production-ab',
     }
     await waitFor(() => {
       expect(fetch).toHaveBeenNthCalledWith(2, '/api/llm-failover.settings', {
@@ -210,5 +213,100 @@ describe('FailoverSettingsSection', () => {
     expect(screen.getAllByDisplayValue('Primary (primary)')).toHaveLength(2)
     expect(screen.getByDisplayValue('Omega (omega)')).toBeTruthy()
     expect(screen.getByDisplayValue('Alpha (alpha)')).toBeTruthy()
+  })
+})
+
+describe('FailoverSettingsSection draft safety', () => {
+  it('flags a dangling active-group reference and blocks Save', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(response(configured, 1))))
+    const props = { api: api(), t: (key: keyof typeof en) => en[key] } as never
+    render(createElement(FailoverSettingsSection, props))
+
+    // Clearing the active group's id dangles the reference; the rename follows
+    // it to '', which anchors nothing, so the document-wide rule fires.
+    const groupId = await screen.findByDisplayValue('production')
+    fireEvent.change(groupId, { target: { value: '' } })
+
+    expect(await screen.findByText(en.v_ACTIVE_GROUP_MISSING)).toBeTruthy()
+    expect((screen.getByRole('button', { name: en.save }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('discards advanced-only edits back to the loaded baseline', async () => {
+    const settings = {
+      describe: vi.fn(() => Promise.resolve({
+        result: {
+          ok: true as const,
+          value: {
+            writable: true,
+            hasDocument: true,
+            namespaces: [
+              { ns: 'llm-deepseek', schema: {}, value: { reasoningEffort: 'high' }, revision: 3 },
+            ],
+          },
+        },
+      })),
+      mutate: vi.fn(),
+    }
+    const hostApi = api()
+    // The advanced editor only mounts for a resolvable adapter layout, so the
+    // primary route needs its real settings address here.
+    hostApi.llm.providers = vi.fn(() => Promise.resolve({
+      result: { ok: true as const, value: { providers: [
+        { provider: 'primary', displayName: 'Primary', settingsNs: 'llm-deepseek', settingsPath: [], active: true },
+        { provider: 'secondary', displayName: 'Secondary', settingsNs: '', settingsPath: [], active: true },
+        { provider: 'dormant', displayName: 'Dormant', settingsNs: '', settingsPath: [], active: false },
+      ] } },
+    }))
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(response(configured, 1))))
+    const props = { api: { ...hostApi, settings }, t: (key: keyof typeof en) => en[key] } as never
+    render(createElement(FailoverSettingsSection, props))
+
+    const toggle = (await screen.findAllByRole('button', { name: en.advToggle }))[0]!
+    fireEvent.click(toggle)
+    // An advanced edit alone surfaces Discard even though the group document
+    // is clean.
+    fireEvent.click(screen.getByRole('checkbox', { name: en.advRetryEnable }))
+    const discard = await screen.findByRole('button', { name: en.discard })
+    fireEvent.click(discard)
+
+    expect(screen.queryByRole('checkbox', { name: en.advRetryEnable })).toBeNull()
+    expect(screen.queryByRole('button', { name: en.discard })).toBeNull()
+    expect((screen.getByRole('button', { name: en.save }) as HTMLButtonElement).disabled).toBe(true)
+    expect(settings.mutate).not.toHaveBeenCalled()
+  })
+
+  it('gives every retryable-code dropdown unique label and hint ids', async () => {
+    const twoGroups = {
+      groups: [
+        { ...configured.groups[0]! },
+        { id: 'standby', targets: [
+          { provider: 'secondary', model: 'beta', retryCount: 0 },
+          { provider: 'primary', model: 'alpha', retryCount: 0 },
+        ] },
+      ],
+      activeGroup: 'production',
+    }
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(response(twoGroups, 1))))
+    const props = { api: api(), t: (key: keyof typeof en) => en[key] } as never
+    render(createElement(FailoverSettingsSection, props))
+
+    await screen.findByDisplayValue('production')
+    const wired = [...document.querySelectorAll('[id^="failover-codes-"]')]
+      .map(node => node.id)
+    expect(wired.length).toBeGreaterThanOrEqual(4)
+    expect(new Set(wired).size).toBe(wired.length)
+  })
+
+  it('aborts the in-flight load when the section unmounts', async () => {
+    let captured: AbortSignal | undefined
+    vi.stubGlobal('fetch', vi.fn((_url: unknown, init?: { signal?: AbortSignal }) => new Promise<Response>(() => {
+      captured = init?.signal
+    })))
+    const props = { api: api(), t: (key: keyof typeof en) => en[key] } as never
+    const rendered = render(createElement(FailoverSettingsSection, props))
+
+    await waitFor(() => expect(captured).toBeDefined())
+    rendered.unmount()
+    expect(captured!.aborted).toBe(true)
   })
 })

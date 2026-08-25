@@ -18,5 +18,8 @@ export default defineConfig({
     environment: 'node',
     globals: false,
     include: ['tests/**/*.spec.ts'],
+    // Inline the primitives package so Vite transforms its `.module.css`
+    // imports; externalized ESM would hand them to the native loader.
+    server: { deps: { inline: ['@deepseek-ai/dsh-client-ui-primitives'] } },
   },
 })

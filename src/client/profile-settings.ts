@@ -100,16 +100,21 @@ interface SerializedEnvelope {
 }
 
 function nodeAt(envelope: SerializedEnvelope, path: readonly string[]): SerializedNode | undefined {
-  let node: SerializedNode | undefined = envelope.refs[String(envelope.uid)]
+  // The schema arrives over the wire; anything but a well-formed refs table
+  // answers "no options" instead of throwing mid-render.
+  const refs: Record<string, SerializedNode> | undefined =
+    typeof envelope.refs === 'object' && envelope.refs !== null ? envelope.refs : undefined
+  if (refs === undefined) return undefined
+  let node: SerializedNode | undefined = refs[String(envelope.uid)]
   for (const key of path) {
     if (node === undefined) return undefined
     if (node.type === 'object' && node.dict !== undefined) {
       const next = node.dict[key]
-      node = next === undefined ? undefined : envelope.refs[String(next)]
+      node = next === undefined ? undefined : refs[String(next)]
     } else if (node.type === 'dict' && node.inner !== undefined) {
-      node = envelope.refs[String(node.inner)]
+      node = refs[String(node.inner)]
     } else if (node.type === 'array' && node.inner !== undefined && /^\d+$/.test(key)) {
-      node = envelope.refs[String(node.inner)]
+      node = refs[String(node.inner)]
     } else {
       return undefined
     }

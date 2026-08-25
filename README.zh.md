@@ -51,7 +51,7 @@ llm-failover:
         - TRANSPORT
 ```
 
-每个组至少需要两个不同的 `{ provider, model }` 目标。每个目标的非负 `retryCount` 表示首次发生可切换错误后，在同一路由上额外尝试的次数；省略时默认为 `0`，即保持原有的立即切换行为。对话模型下拉中的“模型组”分类会列出所有组；选择结果只影响该会话。`activeGroup` 仍可作为未明确选择模型组时的全局默认；省略它会保留 DSH 原有模型选择。默认可切换错误码为 `EMPTY_RESPONSE`、`RATE_LIMIT`、`SERVER`、`TIMEOUT`、`TRANSPORT`。
+每个组至少需要两个不同的 `{ provider, model }` 目标。每个目标的非负 `retryCount` 表示首次发生可切换错误后，在同一路由上额外尝试的次数；省略时默认为 `0`，即保持原有的立即切换行为。对话模型下拉中的“模型组”分类会列出所有组；选择结果只影响该会话。`activeGroup` 是全局开关：设置后所有会话的新请求都会走该组，无论该会话选了什么模型，直到更换或取消激活；省略它保留 DSH 原有模型选择。默认可切换错误码为 `EMPTY_RESPONSE`、`RATE_LIMIT`、`SERVER`、`TIMEOUT`、`TRANSPORT`。
 
 所有 provider 必须先由 DSH 的 adapter 配置并处于可用状态。本插件不保存凭据，也不创建 provider route。
 
@@ -59,11 +59,15 @@ llm-failover:
 
 插件会先调用 `agent/request-error` 下游 listener。下游返回 `{ kind: 'retry' }` 时优先采用该决定，因此 composition 顺序决定 provider retry 或 compaction 是否先于本插件执行。没有下游 retry 且错误码允许切换时，插件先消耗当前 target 剩余的 `retryCount`，次数耗尽后再选择组内下一个 target；最后一个 target 的重试也耗尽后，将失败返回给 Agent Loop。
 
+与基础 bundle 的互动是具体的：base bundle 固定挂载 `llm-retry`，且安装式插件的组合行只能追加其后，所以 `llm-retry` 的监听先于本插件。normal 模式下它会先消耗目标路由自己的供应商级重试预算（适配器 profile 默认 5 次）才轮到本插件决策，target 的 `retryCount` 因此叠加在这批尝试之上——一个坏目标可能要经过多次带退避的重试才会被切走。设置页的“重试预算”提示可以一键把组内目标路由的 `retryPolicy.maxRetries` 写为 `0`，让可切换失败立即触发组切换；该写入影响这条路由的所有用法，并随时可在高级配置中改回。
+
 每次成功切换都会写入不进入模型上下文的 `llm/failover` session event，其中包括模型组、来源 route、目标 route 和 provider-neutral failure。Agent Loop 仍会排除失败的部分输出。
 
 ## Web 界面
 
-设置页从 Host 加载 provider 和模型目录，Provider 下拉只显示当前已启用的 route，模型下拉随 Provider 联动，并可设置每个 target 的重试次数。可切换错误码使用多选下拉；未显式配置时显示并选中默认集合。页面同时支持添加模型组、选择当前组和通过每行旁的上移/下移按钮调整 targets 顺序。页头会显示未保存更改标记；本地按 Host 规则对输入进行内联校验，校验未通过时保存被禁用，并可使用“放弃更改”回到上次已保存的快照。保存使用 Host Settings revision；外部配置被同时修改时会拒绝覆盖。
+设置页从 Host 加载 provider 和模型目录，Provider 下拉只显示当前已启用的 route，模型下拉随 Provider 联动，并可设置每个 target 的重试次数。可切换错误码使用多选下拉；未显式配置时显示并选中默认集合。页面同时支持添加模型组、选择当前组和通过每行旁的上移/下移按钮调整 targets 顺序。页头会显示未保存更改标记；本地按 Host 规则对输入进行内联校验（包括激活组引用悬空），校验未通过时保存被禁用，并可使用“放弃更改”回到上次已保存的快照——分组草稿和高级配置草稿一起还原。保存使用 Host Settings revision；外部配置被同时修改时会拒绝覆盖。页面控件使用宿主共享组件库（Button、Input、Pill 与 `--dsw-alias-*` 设计令牌），观感与原生 Models 设置页一致。
+
+当组内目标路由仍保留供应商级自动重试时，保存区上方会出现“重试预算”提示，列出这些路由并解释它们先于组切换执行；每条路由提供一键“重试设为 0 次”，经同一 `settings.mutate` 通道写入并遵循同一冲突处理，也可整条忽略提示。
 
 ### 目标高级配置
 
